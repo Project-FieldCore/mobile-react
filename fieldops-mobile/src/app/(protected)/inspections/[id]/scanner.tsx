@@ -5,6 +5,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, colors, spacing, typography } from '@/design-system';
 import { getInspection } from '@/features/inspections/mockRepository';
+import { saveEquipmentIdentification } from '@/features/inspections/draftStore';
 
 export default function ScannerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -16,6 +17,7 @@ export default function ScannerScreen() {
   const validate = async (code: string) => {
     const inspection = await getInspection(id);
     const matches = code.trim().toLowerCase() === inspection?.equipment.toLowerCase();
+    if (matches) await saveEquipmentIdentification(id, code.trim());
     setScanned(code);
     setMessage(matches ? 'Equipamento confirmado para esta inspeção.' : 'O código lido não corresponde ao equipamento previsto. Confira antes de prosseguir.');
   };

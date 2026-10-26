@@ -6,6 +6,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, LoadingState, spacing, typography } from '@/design-system';
 import { getInspection, type Inspection } from '@/features/inspections/mockRepository';
+import { saveInspectionLocation } from '@/features/inspections/draftStore';
 
 export default function InspectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +27,7 @@ export default function InspectionDetailScreen() {
         return;
       }
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await saveInspectionLocation(id, { latitude: position.coords.latitude, longitude: position.coords.longitude, capturedAt: new Date().toISOString() });
       setCheckIn(`${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)} · ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
     } catch {
       setCheckInError('Não foi possível obter a localização agora. Verifique o GPS e tente novamente.');

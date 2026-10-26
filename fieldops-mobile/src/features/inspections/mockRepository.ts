@@ -3,9 +3,25 @@
  * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
  */
 import { enqueueInspectionForSync } from './draftStore';
+import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 export type InspectionStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'PENDING_SYNC';
 export type InspectionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type ChecklistItem = {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'boolean' | 'conformity' | 'choice' | 'date';
+  required?: boolean;
+  options?: string[];
+};
+
+export type ChecklistSection = {
+  id: string;
+  title: string;
+  items: ChecklistItem[];
+};
 
 export type Inspection = {
   id: string;
@@ -25,22 +41,79 @@ const inspections: Inspection[] = [
   { id: 'insp-004', client: 'Indústria Horizonte', site: 'Linha de Produção B', equipment: 'Esteira ET-02', scheduledAt: 'Amanhã, 13:00', priority: 'HIGH', status: 'SUBMITTED', instructions: 'Aguarde a análise da supervisão.' },
 ];
 
+let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+
+async function getDatabase() {
+  if (!databasePromise) {
+    databasePromise = SQLite.openDatabaseAsync('fieldops.db').then(async (database) => {
+      await database.execAsync('CREATE TABLE IF NOT EXISTS cached_inspections (id TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL)');
+      return database;
+    });
+  }
+  return databasePromise;
+}
+
+async function getCachedInspections(): Promise<Inspection[]> {
+  if (Platform.OS === 'web') return inspections;
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<{ content: string }>('SELECT content FROM cached_inspections');
+  if (rows.length) return rows.map((row) => JSON.parse(row.content) as Inspection);
+  await Promise.all(inspections.map((inspection) => database.runAsync('INSERT INTO cached_inspections (id, content) VALUES (?, ?)', inspection.id, JSON.stringify(inspection))));
+  return inspections;
+}
+
+async function persistInspection(inspection: Inspection): Promise<void> {
+  if (Platform.OS === 'web') return;
+  const database = await getDatabase();
+  await database.runAsync('INSERT OR REPLACE INTO cached_inspections (id, content) VALUES (?, ?)', inspection.id, JSON.stringify(inspection));
+}
+
+// This fixture has the same shape as an inspection snapshot. Once the API is
+// available, this repository will replace it with the downloaded snapshot.
+const defaultChecklist: ChecklistSection[] = [
+  {
+    id: 'initial-check',
+    title: 'Verificação inicial',
+    items: [
+      { id: 'equipment', label: 'Identificação do equipamento', type: 'text', required: true },
+      { id: 'temperature', label: 'Temperatura medida (°C)', type: 'number', required: true },
+      { id: 'energized', label: 'O equipamento está energizado?', type: 'boolean', required: true },
+    ],
+  },
+  {
+    id: 'operating-conditions',
+    title: 'Condições operacionais',
+    items: [
+      { id: 'visual', label: 'Condição visual geral', type: 'conformity', required: true },
+      { id: 'risk', label: 'Nível de risco observado', type: 'choice', required: true, options: ['Baixo', 'Médio', 'Alto'] },
+      { id: 'date', label: 'Data da verificação', type: 'date', required: true },
+      { id: 'notes', label: 'Observações', type: 'text' },
+    ],
+  },
+];
+
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export async function listInspections(): Promise<Inspection[]> {
   await wait(350);
-  return inspections;
+  return getCachedInspections();
 }
 
 export async function getInspection(id: string): Promise<Inspection | null> {
   await wait(200);
-  return inspections.find((inspection) => inspection.id === id) ?? null;
+  return (await getCachedInspections()).find((inspection) => inspection.id === id) ?? null;
+}
+
+export async function getInspectionChecklist(id: string): Promise<ChecklistSection[] | null> {
+  const inspection = await getInspection(id);
+  return inspection ? defaultChecklist : null;
 }
 
 export async function completeInspection(id: string): Promise<void> {
   const inspection = inspections.find((item) => item.id === id);
   if (inspection) {
     inspection.status = 'PENDING_SYNC';
+    await persistInspection(inspection);
     await enqueueInspectionForSync(id);
   }
 }

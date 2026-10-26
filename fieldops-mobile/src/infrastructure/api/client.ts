@@ -1,8 +1,6 @@
+import { API_TIMEOUT_MS, getApiBaseUrl } from '@/config/api';
 import type { Session } from '@/infrastructure/storage/session';
 import { formatErrorMessage, parseErrorResponse, type ErrorResponse, type FieldError } from './errorResponse';
-
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
-const REQUEST_TIMEOUT_MS = 15_000;
 
 export class ApiError extends Error {
   constructor(
@@ -48,7 +46,9 @@ type RequestOptions = Omit<RequestInit, 'body' | 'headers'> & {
 };
 
 function assertApiBaseUrl(): string {
-  if (!apiBaseUrl) {
+  const apiBaseUrl = getApiBaseUrl().replace(/\/$/, '');
+
+  if (!apiBaseUrl || !/^https?:\/\//i.test(apiBaseUrl)) {
     throw new ApiError('A URL da API não foi configurada. Defina EXPO_PUBLIC_API_URL.');
   }
 
@@ -89,7 +89,7 @@ async function buildApiError(response: Response): Promise<ApiError> {
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, session, ...requestOptions } = options;
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
 
   let response: Response;
   try {
