@@ -192,7 +192,12 @@ O aplicativo distingue e exibe claramente cinco estados de sincronização:
 - Endpoints dedicados ao técnico em `/mobile/*`, sempre filtrados pelo usuário autenticado
 - Sincronização via `/mobile/sync/push` (envio) e `/mobile/sync/pull` (download por cursor)
 
-Enquanto um endpoint ainda não estiver disponível no backend, a aplicação pode consumir mocks baseados no mesmo contrato, sem exigir reescrita da tela quando o backend for integrado.
+### Mocks (`EXPO_PUBLIC_DATA_SOURCE=mock`)
+
+- Cadastros/auth: `fieldops-mobile/src/data/openapi/fieldops-v1.json` (cópia do mock canônico da API) + `infrastructure/api/contractMocks.ts`
+- Login mock: e-mail do contrato (`ana.silva@example.com`) + senha local em `src/data/demoCredentials.ts` (não está no OpenAPI)
+- Erros HTTP: `ErrorResponse` (doc. 12.2) via `infrastructure/api/errorResponse.ts`
+- Inspeções Sprint-3: `features/inspections/mockRepository.ts` — fixtures de domínio, **não** mocks de cadastro OpenAPI
 
 ---
 

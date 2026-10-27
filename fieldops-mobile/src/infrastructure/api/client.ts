@@ -1,4 +1,5 @@
 import type { Session } from '@/infrastructure/storage/session';
+import { formatErrorMessage, parseErrorResponse, type ErrorResponse, type FieldError } from './errorResponse';
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -8,9 +9,35 @@ export class ApiError extends Error {
     message: string,
     public readonly status?: number,
     public readonly code?: string,
+    public readonly path?: string,
+    public readonly requestId?: string,
+    public readonly fieldErrors?: FieldError[],
+    public readonly timestamp?: string,
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+
+  /** Envelope 12.2 quando o body da API era ErrorResponse completo. */
+  toErrorResponse(): ErrorResponse | null {
+    if (
+      this.status == null ||
+      !this.code ||
+      !this.path ||
+      !this.timestamp ||
+      !this.message
+    ) {
+      return null;
+    }
+    return {
+      timestamp: this.timestamp,
+      status: this.status,
+      code: this.code,
+      message: this.message,
+      path: this.path,
+      requestId: this.requestId,
+      fieldErrors: this.fieldErrors,
+    };
   }
 }
 
@@ -28,13 +55,35 @@ function assertApiBaseUrl(): string {
   return apiBaseUrl;
 }
 
-async function getErrorMessage(response: Response): Promise<string> {
+async function buildApiError(response: Response): Promise<ApiError> {
+  const fallback = 'Não foi possível concluir esta operação.';
+  let body: unknown;
   try {
-    const data = (await response.json()) as { message?: string; code?: string };
-    return data.message ?? data.code ?? 'Não foi possível concluir esta operação.';
+    body = await response.json();
   } catch {
-    return 'Não foi possível concluir esta operação.';
+    return new ApiError(fallback, response.status);
   }
+
+  const errorResponse = parseErrorResponse(body);
+  if (errorResponse) {
+    return new ApiError(
+      formatErrorMessage(errorResponse, fallback),
+      errorResponse.status,
+      errorResponse.code,
+      errorResponse.path,
+      errorResponse.requestId,
+      errorResponse.fieldErrors,
+      errorResponse.timestamp,
+    );
+  }
+
+  const record = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const message =
+    (record && typeof record.message === 'string' && record.message) ||
+    (record && typeof record.code === 'string' && record.code) ||
+    fallback;
+  const code = record && typeof record.code === 'string' ? record.code : undefined;
+  return new ApiError(message, response.status, code);
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -66,7 +115,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    throw new ApiError(await getErrorMessage(response), response.status);
+    throw await buildApiError(response);
   }
 
   if (response.status === 204) {
@@ -75,3 +124,5 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   return response.json() as Promise<T>;
 }
+
+export type { ErrorResponse, FieldError };
