@@ -119,6 +119,19 @@ npx expo start
 
 ---
 
+## Qualidade / CI
+
+App em `fieldops-mobile/`. Pipeline de PR: lint + typecheck (sem EAS Build).
+
+```bash
+cd fieldops-mobile
+npm ci
+npm run lint
+npm run typecheck
+```
+
+Detalhes: [docs/CI.md](docs/CI.md). Convenção dos 3 repos: [CI_CONVENTION.md](https://github.com/Project-FieldCore/docs/blob/main/PROJECT_MANAGEMENT/CI_CONVENTION.md).
+
 ## 🧪 Testes
 
 ```bash
