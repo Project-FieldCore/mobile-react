@@ -1,8 +1,14 @@
-# FielCore — Mobile
+# mobile-react
 
-Aplicativo mobile da plataforma **FieldCore**, destinado aos técnicos de campo para execução de inspeções técnicas, com suporte a operação offline e sincronização com o servidor.
+Aplicativo mobile da plataforma **FieldOps** (org FieldCore), destinado aos técnicos de campo para execução de inspeções técnicas, com suporte a operação offline e sincronização com o servidor.
 
-Este repositório contém a aplicação mobile construída com **Expo + React Native + TypeScript**. Faz parte de um ecossistema de três aplicações independentes: este app mobile, a [interface administrativa web](#) e a [API REST](#).
+Este repositório contém a aplicação mobile construída com **Expo + React Native + TypeScript**. Faz parte de um ecossistema com [web-react](https://github.com/Project-FieldCore/web-react), [api-java](https://github.com/Project-FieldCore/api-java) e [docs](https://github.com/Project-FieldCore/docs).
+
+## Documentação e convenções
+
+- Hub: [Project-FieldCore/docs](https://github.com/Project-FieldCore/docs)
+- Branches, commits, issues e PRs: [BRANCH_COMMIT_CONVENTION.md](https://github.com/Project-FieldCore/docs/blob/docs/structure/PROJECT_MANAGEMENT/BRANCH_COMMIT_CONVENTION.md)
+- Base de integração neste repo: `develop`
 
 ---
 
