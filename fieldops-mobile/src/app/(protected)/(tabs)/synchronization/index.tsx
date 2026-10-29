@@ -7,6 +7,8 @@ import { Button, Card, colors, spacing, typography } from '@/design-system';
 import { getPendingSyncCount } from '@/features/inspections/mockRepository';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
 
+// Synchronization is a tab route.
+
 export default function SynchronizationScreen() {
   const [pending, setPending] = useState(getPendingSyncCount());
   const [operations, setOperations] = useState<PendingOperation[]>([]);

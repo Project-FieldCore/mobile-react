@@ -5,6 +5,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
 
+// Home is a tab route.
+
 type Priority = 'alta' | 'media' | 'baixa';
 
 type UpcomingInspection = {

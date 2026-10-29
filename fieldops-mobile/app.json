@@ -38,7 +38,8 @@
           "locationWhenInUsePermission": "Permita que o FieldOps registre sua localização ao iniciar a inspeção."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

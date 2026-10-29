@@ -8,6 +8,8 @@ import { Button, Card, colors, EmptyState, LoadingState, spacing, typography } f
 import { getInspection, type Inspection } from '@/features/inspections/mockRepository';
 import { saveInspectionLocation } from '@/features/inspections/draftStore';
 
+// The detail screen is the index route for a single inspection.
+
 export default function InspectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [inspection, setInspection] = useState<Inspection | null | undefined>();
