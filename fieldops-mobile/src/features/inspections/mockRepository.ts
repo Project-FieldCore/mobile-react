@@ -1,3 +1,7 @@
+/**
+ * Fixtures de domínio Sprint-3 (lista/fluxo de inspeção).
+ * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
+ */
 import { enqueueInspectionForSync } from './draftStore';
 
 export type InspectionStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'PENDING_SYNC';
