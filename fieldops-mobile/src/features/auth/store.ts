@@ -12,9 +12,18 @@ type AuthState = {
   session: Session | null;
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Renova access+refresh via API (rotação). Requisições simultâneas compartilham
+   * uma única chamada — reusar refresh antigo revoga a família no servidor.
+   * Erro HTTP de auth → encerra sessão; erro de rede → propaga e mantém a
+   * sessão local enquanto o access ainda vale (sessão offline limitada).
+   */
   refresh: () => Promise<Session | null>;
   signOut: (options?: SignOutOptions) => Promise<void>;
 };
+
+/** Uma renovação por vez (equivalente ao refreshSession do web). */
+let refreshInFlight: Promise<Session | null> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: 'loading',
@@ -28,26 +37,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await setSession(session);
     set({ session, status: 'authenticated' });
   },
-  refresh: async () => {
-    const currentSession = get().session;
-    if (!currentSession?.refreshToken) {
-      await get().signOut();
-      return null;
-    }
+  refresh: () => {
+    if (refreshInFlight) return refreshInFlight;
 
-    try {
-      const session = await refreshSession(currentSession.refreshToken);
-      await setSession(session);
-      set({ session, status: 'authenticated' });
-      return session;
-    } catch (error) {
-      // Sem rede, a sessão local permanece acessível somente até o vencimento do access token.
-      if (error instanceof ApiError && error.status == null && !isSessionExpired(currentSession)) {
+    refreshInFlight = (async () => {
+      const currentSession = get().session;
+      if (!currentSession?.refreshToken) {
+        await get().signOut({ revokeRemote: false });
         return null;
       }
-      await get().signOut({ revokeRemote: false });
-      return null;
-    }
+
+      try {
+        const session = await refreshSession(currentSession.refreshToken);
+        await setSession(session);
+        set({ session, status: 'authenticated' });
+        return session;
+      } catch (error) {
+        // Só derruba a sessão em resposta HTTP da API (ex.: 401 refresh inválido).
+        if (error instanceof ApiError && typeof error.status === 'number') {
+          await get().signOut({ revokeRemote: false });
+          return null;
+        }
+        // Rede/timeout: mantém tokens locais enquanto o access ainda vale.
+        if (error instanceof ApiError && error.status == null && !isSessionExpired(currentSession)) {
+          throw error;
+        }
+        await get().signOut({ revokeRemote: false });
+        return null;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+
+    return refreshInFlight;
   },
   signOut: async ({ revokeRemote = true }: SignOutOptions = {}) => {
     const session = get().session;
@@ -62,3 +84,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ session: null, status: 'unauthenticated' });
   },
 }));
+
+/** Só para testes — limpa o voo em andamento entre casos. */
+export function __resetRefreshInFlightForTests(): void {
+  refreshInFlight = null;
+}
