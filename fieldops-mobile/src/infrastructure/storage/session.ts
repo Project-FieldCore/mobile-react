@@ -6,7 +6,13 @@ const SESSION_KEY = 'fieldops.session';
 export type Session = {
   accessToken: string;
   refreshToken: string;
+  /** Epoch em milissegundos. Delimita o uso local quando não há rede. */
+  expiresAt: number;
 };
+
+export function isSessionExpired(session: Session, now = Date.now()): boolean {
+  return session.expiresAt <= now;
+}
 
 export async function getSessionToken(): Promise<string | null> {
   const session = await getSession();
@@ -14,7 +20,7 @@ export async function getSessionToken(): Promise<string | null> {
 }
 
 export async function setSessionToken(token: string): Promise<void> {
-  await setSession({ accessToken: token, refreshToken: '' });
+  await setSession({ accessToken: token, refreshToken: '', expiresAt: Date.now() + 15 * 60 * 1000 });
 }
 
 export async function clearSessionToken(): Promise<void> {
@@ -30,9 +36,23 @@ export async function getSession(): Promise<Session | null> {
 
   try {
     const session = JSON.parse(serializedSession) as Partial<Session>;
-    return typeof session.accessToken === 'string' && typeof session.refreshToken === 'string'
-      ? { accessToken: session.accessToken, refreshToken: session.refreshToken }
-      : null;
+    const { accessToken, refreshToken, expiresAt } = session;
+    if (
+      typeof accessToken === 'string' &&
+      typeof refreshToken === 'string' &&
+      typeof expiresAt === 'number' &&
+      Number.isFinite(expiresAt) &&
+      expiresAt > Date.now()
+    ) {
+      return {
+        accessToken,
+        refreshToken,
+        expiresAt,
+      };
+    }
+
+    await deleteItem(SESSION_KEY);
+    return null;
   } catch {
     await deleteItem(SESSION_KEY);
     return null;

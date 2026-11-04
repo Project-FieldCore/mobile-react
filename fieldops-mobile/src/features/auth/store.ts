@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 
+import { login, logoutSession, refreshSession } from './api';
+import { clearSession, getSession, isSessionExpired, setSession, type Session } from '@/infrastructure/storage/session';
 import { ApiError } from '@/infrastructure/api/client';
-import { login, refreshSession } from './api';
-import { clearSession, getSession, setSession, type Session } from '@/infrastructure/storage/session';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+type SignOutOptions = { revokeRemote?: boolean };
 
 type AuthState = {
   status: AuthStatus;
@@ -15,10 +16,10 @@ type AuthState = {
    * Renova access+refresh via API (rotação). Requisições simultâneas compartilham
    * uma única chamada — reusar refresh antigo revoga a família no servidor.
    * Erro HTTP de auth → encerra sessão; erro de rede → propaga e mantém a
-   * sessão local (sessão offline limitada).
+   * sessão local enquanto o access ainda vale (sessão offline limitada).
    */
   refresh: () => Promise<Session | null>;
-  signOut: () => Promise<void>;
+  signOut: (options?: SignOutOptions) => Promise<void>;
 };
 
 /** Uma renovação por vez (equivalente ao refreshSession do web). */
@@ -42,7 +43,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     refreshInFlight = (async () => {
       const currentSession = get().session;
       if (!currentSession?.refreshToken) {
-        await get().signOut();
+        await get().signOut({ revokeRemote: false });
         return null;
       }
 
@@ -53,12 +54,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return session;
       } catch (error) {
         // Só derruba a sessão em resposta HTTP da API (ex.: 401 refresh inválido).
-        // Timeout/rede (ApiError sem status) mantém tokens locais para uso offline.
         if (error instanceof ApiError && typeof error.status === 'number') {
-          await get().signOut();
+          await get().signOut({ revokeRemote: false });
           return null;
         }
-        throw error;
+        // Rede/timeout: mantém tokens locais enquanto o access ainda vale.
+        if (error instanceof ApiError && error.status == null && !isSessionExpired(currentSession)) {
+          throw error;
+        }
+        await get().signOut({ revokeRemote: false });
+        return null;
       }
     })().finally(() => {
       refreshInFlight = null;
@@ -66,7 +71,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     return refreshInFlight;
   },
-  signOut: async () => {
+  signOut: async ({ revokeRemote = true }: SignOutOptions = {}) => {
+    const session = get().session;
+    if (revokeRemote && session?.refreshToken) {
+      try {
+        await logoutSession(session);
+      } catch {
+        // A limpeza local não pode depender da disponibilidade da rede.
+      }
+    }
     await clearSession();
     set({ session: null, status: 'unauthenticated' });
   },

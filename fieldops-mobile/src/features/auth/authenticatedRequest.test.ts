@@ -24,6 +24,7 @@ vi.mock('@/infrastructure/api/client', async () => {
 
 vi.mock('./api', () => ({
   login: vi.fn(),
+  logoutSession: vi.fn().mockResolvedValue(undefined),
   refreshSession: vi.fn(),
 }));
 
@@ -31,6 +32,7 @@ vi.mock('@/infrastructure/storage/session', () => ({
   getSession: vi.fn().mockResolvedValue(null),
   setSession: vi.fn().mockResolvedValue(undefined),
   clearSession: vi.fn().mockResolvedValue(undefined),
+  isSessionExpired: vi.fn().mockReturnValue(false),
 }));
 
 const mockedApiRequest = apiRequest as unknown as ReturnType<typeof vi.fn>;
@@ -42,7 +44,11 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
     __resetRefreshInFlightForTests();
     useAuthStore.setState({
       status: 'authenticated',
-      session: { accessToken: 'access-old', refreshToken: 'refresh-1' },
+      session: {
+        accessToken: 'access-old',
+        refreshToken: 'refresh-1',
+        expiresAt: Date.now() + 15 * 60 * 1000,
+      },
     });
   });
 
@@ -57,6 +63,7 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
     mockedRefreshSession.mockResolvedValue({
       accessToken: 'access-new',
       refreshToken: 'refresh-2',
+      expiresAt: Date.now() + 15 * 60 * 1000,
     });
 
     const result = await authenticatedRequest<{ ok: boolean }>('/inspections');
@@ -64,18 +71,26 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
     expect(result).toEqual({ ok: true });
     expect(mockedRefreshSession).toHaveBeenCalledTimes(1);
     expect(mockedRefreshSession).toHaveBeenCalledWith('refresh-1');
-    expect(setSession).toHaveBeenCalledWith({ accessToken: 'access-new', refreshToken: 'refresh-2' });
+    expect(setSession).toHaveBeenCalledWith(
+      expect.objectContaining({ accessToken: 'access-new', refreshToken: 'refresh-2' }),
+    );
     expect(mockedApiRequest).toHaveBeenCalledTimes(2);
-    expect(mockedApiRequest.mock.calls[1][1].session).toEqual({
-      accessToken: 'access-new',
-      refreshToken: 'refresh-2',
-    });
+    expect(mockedApiRequest.mock.calls[1][1].session).toEqual(
+      expect.objectContaining({
+        accessToken: 'access-new',
+        refreshToken: 'refresh-2',
+      }),
+    );
     expect(useAuthStore.getState().session?.accessToken).toBe('access-new');
   });
 
   it('requisições simultâneas com 401 compartilham uma única renovação', async () => {
-    let release!: (session: { accessToken: string; refreshToken: string }) => void;
-    const gate = new Promise<{ accessToken: string; refreshToken: string }>((resolve) => {
+    let release!: (session: {
+      accessToken: string;
+      refreshToken: string;
+      expiresAt: number;
+    }) => void;
+    const gate = new Promise<{ accessToken: string; refreshToken: string; expiresAt: number }>((resolve) => {
       release = resolve;
     });
     mockedRefreshSession.mockImplementation(() => gate);
@@ -90,7 +105,11 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
       authenticatedRequest('/c'),
     ]);
     await Promise.resolve();
-    release({ accessToken: 'access-new', refreshToken: 'refresh-2' });
+    release({
+      accessToken: 'access-new',
+      refreshToken: 'refresh-2',
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
     const results = await pending;
 
     expect(results).toEqual([{ ok: true }, { ok: true }, { ok: true }]);
@@ -115,10 +134,12 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
       message: 'Não foi possível conectar ao servidor.',
     });
     expect(clearSession).not.toHaveBeenCalled();
-    expect(useAuthStore.getState().session).toEqual({
-      accessToken: 'access-old',
-      refreshToken: 'refresh-1',
-    });
+    expect(useAuthStore.getState().session).toEqual(
+      expect.objectContaining({
+        accessToken: 'access-old',
+        refreshToken: 'refresh-1',
+      }),
+    );
   });
 
   it('se outra requisição já renovou, só repete sem novo refresh', async () => {
@@ -128,7 +149,11 @@ describe('authenticatedRequest + refresh (PBI-0010.2)', () => {
       }
       // Outra requisição renovou enquanto esta recebia 401.
       useAuthStore.setState({
-        session: { accessToken: 'access-already-new', refreshToken: 'refresh-2' },
+        session: {
+          accessToken: 'access-already-new',
+          refreshToken: 'refresh-2',
+          expiresAt: Date.now() + 15 * 60 * 1000,
+        },
       });
       throw new ApiError('Unauthorized', 401);
     });

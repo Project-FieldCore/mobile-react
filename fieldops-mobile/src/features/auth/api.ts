@@ -12,12 +12,22 @@ export type LoginInput = {
 type SessionResponse = {
   accessToken: string;
   refreshToken: string;
+  expiresIn: number;
 };
 
 const MOCK_SESSION: Session = {
   accessToken: 'mock-access-token',
   refreshToken: 'mock-refresh-token',
+  expiresAt: Date.now() + 15 * 60 * 1000,
 };
+
+function toSession(response: SessionResponse): Session {
+  return {
+    accessToken: response.accessToken,
+    refreshToken: response.refreshToken,
+    expiresAt: Date.now() + response.expiresIn * 1000,
+  };
+}
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -46,16 +56,28 @@ export async function login(input: LoginInput): Promise<Session> {
     return MOCK_SESSION;
   }
 
-  return apiRequest<SessionResponse>('/auth/login', { method: 'POST', body: input });
+  const response = await apiRequest<SessionResponse>('/auth/login', { method: 'POST', body: input });
+  return toSession(response);
 }
 
-export function refreshSession(refreshToken: string): Promise<Session> {
+export async function refreshSession(refreshToken: string): Promise<Session> {
   if (dataSource === 'mock') {
-    return Promise.resolve(MOCK_SESSION);
+    return { ...MOCK_SESSION, expiresAt: Date.now() + 15 * 60 * 1000 };
   }
 
-  return apiRequest<SessionResponse>('/auth/refresh', {
+  const response = await apiRequest<SessionResponse>('/auth/refresh', {
     method: 'POST',
     body: { refreshToken },
+  });
+  return toSession(response);
+}
+
+export async function logoutSession(session: Session): Promise<void> {
+  if (dataSource === 'mock') return;
+
+  await apiRequest<void>('/auth/logout', {
+    method: 'POST',
+    body: { refreshToken: session.refreshToken },
+    session,
   });
 }
