@@ -5,7 +5,7 @@ import { useRef, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Button, colors, spacing, typography } from '@/design-system';
-import { addInspectionEvidence } from '@/features/inspections/draftStore';
+import { addInspectionEvidence, setEvidenceUploadStatus } from '@/features/inspections/draftStore';
 import { uploadItemEvidence, usesExecutionApi } from '@/features/inspections/executionApi';
 
 export default function EvidenceScreen() {
@@ -38,14 +38,18 @@ export default function EvidenceScreen() {
     const destination = `${FileSystem.documentDirectory}fieldops-evidence-${id}-${Date.now()}.${extension}`;
     await FileSystem.copyAsync({ from: photoUri, to: destination });
     if (!savedLocally.current) {
-      await addInspectionEvidence(id, { uri: destination, capturedAt, itemId });
+      await addInspectionEvidence(id, { uri: destination, capturedAt, itemId, uploadStatus: usesExecutionApi() && itemId ? 'PENDING' : undefined });
       savedLocally.current = true;
     }
     if (usesExecutionApi() && itemId) {
       try {
         await uploadItemEvidence(id, itemId, destination);
+        await setEvidenceUploadStatus(id, destination, 'UPLOADED');
       } catch (error) {
-        setUploadError(error instanceof Error ? error.message : 'Não foi possível enviar a foto.');
+        await setEvidenceUploadStatus(id, destination, 'PENDING');
+        setUploadError(error instanceof Error
+          ? `${error.message} A foto ficou neste aparelho e será enviada quando a conexão voltar.`
+          : 'A foto ficou neste aparelho e será enviada quando a conexão voltar.');
         return;
       }
     }
