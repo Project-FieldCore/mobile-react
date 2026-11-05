@@ -1,12 +1,12 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, LoadingState, spacing, typography } from '@/design-system';
 import { getInspection, startInspection, type Inspection } from '@/features/inspections/mockRepository';
-import { saveInspectionLocation } from '@/features/inspections/draftStore';
+import { hydrateInspectionDraft, saveInspectionLocation } from '@/features/inspections/draftStore';
 
 // The detail screen is the index route for a single inspection.
 
@@ -16,8 +16,10 @@ export default function InspectionDetailScreen() {
   const [checkIn, setCheckIn] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [equipmentCode, setEquipmentCode] = useState<string | null>(null);
 
   useEffect(() => { void getInspection(id).then(setInspection); }, [id]);
+  useFocusEffect(useCallback(() => { void hydrateInspectionDraft(id).then((draft) => setEquipmentCode(draft?.equipmentCode ?? null)); }, [id]));
 
   const registerCheckIn = async () => {
     setIsCheckingIn(true);
@@ -56,6 +58,7 @@ export default function InspectionDetailScreen() {
       <Text style={styles.sectionTitle}>Instruções</Text>
       <Text style={styles.instructions}>{inspection.instructions}</Text>
       <Card style={styles.checkInCard}><Text style={styles.checkInTitle}>Check-in no local</Text><Text style={styles.checkInText}>{checkIn ? `Localização registrada: ${checkIn}` : 'Registre sua localização antes de começar. Este passo é opcional.'}</Text>{checkInError ? <Text style={styles.checkInError}>{checkInError}</Text> : null}<Button label={checkIn ? 'Atualizar localização' : 'Registrar localização'} variant="secondary" loading={isCheckingIn} onPress={() => void registerCheckIn()} /></Card>
+      {equipmentCode ? <Text style={styles.checkInText}>Equipamento confirmado: {equipmentCode}</Text> : null}
       <Button label="Identificar equipamento por QR Code" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/scanner`)} />
       <Button label="Adicionar evidências fotográficas" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/evidence`)} />
       <Button label="Iniciar checklist" onPress={() => { void startInspection(inspection.id).then(() => router.push(`/inspections/${inspection.id}/checklist`)); }} />

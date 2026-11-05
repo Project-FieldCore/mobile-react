@@ -113,6 +113,15 @@ export async function fetchChecklist(id: string): Promise<ChecklistSection[]> {
   return toSections(sections);
 }
 
+export async function confirmInspectionEquipment(id: string, qrCode: string): Promise<Inspection> {
+  const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}/confirm-equipment`, {
+    method: 'POST',
+    session: await session(),
+    body: { qrCode },
+  });
+  return toMobileInspection(row);
+}
+
 export async function startAssignedInspection(id: string, startedAtDevice: string): Promise<Inspection> {
   const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}/start`, {
     method: 'POST',

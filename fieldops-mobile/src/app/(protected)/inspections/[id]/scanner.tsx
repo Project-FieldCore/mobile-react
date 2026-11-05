@@ -5,7 +5,9 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, colors, spacing, typography } from '@/design-system';
 import { getInspection } from '@/features/inspections/mockRepository';
+import { confirmInspectionEquipment, usesExecutionApi } from '@/features/inspections/executionApi';
 import { saveEquipmentIdentification } from '@/features/inspections/draftStore';
+import { ApiError } from '@/infrastructure/api/client';
 
 export default function ScannerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -15,10 +17,25 @@ export default function ScannerScreen() {
   const [message, setMessage] = useState<string | null>(null);
 
   const validate = async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    if (usesExecutionApi()) {
+      try {
+        await confirmInspectionEquipment(id, trimmed);
+        await saveEquipmentIdentification(id, trimmed);
+        setMessage('Equipamento confirmado para esta inspeção.');
+      } catch (error) {
+        setMessage(error instanceof ApiError && error.code === 'EQUIPMENT_MISMATCH'
+          ? 'O código lido não corresponde ao equipamento previsto. Confira antes de prosseguir.'
+          : error instanceof Error ? error.message : 'Não foi possível confirmar o equipamento.');
+      }
+      setScanned(trimmed);
+      return;
+    }
     const inspection = await getInspection(id);
-    const matches = code.trim().toLowerCase() === inspection?.equipment.toLowerCase();
-    if (matches) await saveEquipmentIdentification(id, code.trim());
-    setScanned(code);
+    const matches = trimmed.toLowerCase() === inspection?.equipment.toLowerCase();
+    if (matches) await saveEquipmentIdentification(id, trimmed);
+    setScanned(trimmed);
     setMessage(matches ? 'Equipamento confirmado para esta inspeção.' : 'O código lido não corresponde ao equipamento previsto. Confira antes de prosseguir.');
   };
 
