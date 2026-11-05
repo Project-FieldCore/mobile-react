@@ -6,6 +6,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Button, colors, spacing, typography } from '@/design-system';
 import { addInspectionEvidence } from '@/features/inspections/draftStore';
+import { uploadItemEvidence, usesExecutionApi } from '@/features/inspections/executionApi';
 
 export default function EvidenceScreen() {
   const { id, itemId } = useLocalSearchParams<{ id: string; itemId?: string }>();
@@ -13,6 +14,8 @@ export default function EvidenceScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const savedLocally = useRef(false);
 
   const capture = async () => {
     if (!cameraRef.current) return;
@@ -34,12 +37,23 @@ export default function EvidenceScreen() {
     const extension = photoUri.split('.').pop()?.split('?')[0] || 'jpg';
     const destination = `${FileSystem.documentDirectory}fieldops-evidence-${id}-${Date.now()}.${extension}`;
     await FileSystem.copyAsync({ from: photoUri, to: destination });
-    await addInspectionEvidence(id, { uri: destination, capturedAt, itemId });
+    if (!savedLocally.current) {
+      await addInspectionEvidence(id, { uri: destination, capturedAt, itemId });
+      savedLocally.current = true;
+    }
+    if (usesExecutionApi() && itemId) {
+      try {
+        await uploadItemEvidence(id, itemId, destination);
+      } catch (error) {
+        setUploadError(error instanceof Error ? error.message : 'Não foi possível enviar a foto.');
+        return;
+      }
+    }
     router.back();
   };
-  if (photoUri) return <View style={styles.preview}><Image source={{ uri: photoUri }} style={styles.image} /><View style={styles.previewBottom}><Text style={styles.title}>Evidência capturada</Text><Text style={styles.text}>A foto foi salva no dispositivo e será enviada junto com a inspeção quando houver sincronização.</Text><Button label="Usar esta foto" onPress={() => void savePhoto()} /><Button label="Tirar outra foto" variant="secondary" onPress={() => setPhotoUri(null)} /></View></View>;
+  if (photoUri) return <View style={styles.preview}><Image source={{ uri: photoUri }} style={styles.image} /><View style={styles.previewBottom}><Text style={styles.title}>Evidência capturada</Text><Text style={styles.text}>{itemId ? 'A foto fica neste item do checklist.' : 'A foto foi salva no dispositivo e será enviada junto com a inspeção quando houver sincronização.'}</Text>{uploadError ? <Text style={styles.error}>{uploadError}</Text> : null}<Button label="Usar esta foto" onPress={() => void savePhoto()} /><Button label="Tirar outra foto" variant="secondary" onPress={() => { setUploadError(null); setPhotoUri(null); }} /></View></View>;
 
   return <View style={styles.cameraContainer}><CameraView ref={cameraRef} style={styles.camera} facing="back" /><View style={styles.cameraBottom}><Text style={styles.cameraText}>Fotografe o equipamento ou a não conformidade identificada.</Text><Button label="Capturar foto" loading={isCapturing} onPress={() => void capture()} /><Button label="Cancelar" variant="light" onPress={() => router.back()} /></View></View>;
 }
 
-const styles = StyleSheet.create({ cameraContainer: { flex: 1, backgroundColor: colors.navy }, camera: { flex: 1 }, cameraBottom: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.navy }, cameraText: { ...typography.body, color: colors.textOnDark, lineHeight: 21, textAlign: 'center' }, center: { flex: 1, padding: spacing.lg, gap: spacing.md, justifyContent: 'center', backgroundColor: colors.background }, preview: { flex: 1, backgroundColor: colors.navy }, image: { flex: 1, width: '100%' }, previewBottom: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background }, title: { ...typography.title, color: colors.text }, text: { ...typography.body, color: colors.textMuted, lineHeight: 21 } });
+const styles = StyleSheet.create({ cameraContainer: { flex: 1, backgroundColor: colors.navy }, camera: { flex: 1 }, cameraBottom: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.navy }, cameraText: { ...typography.body, color: colors.textOnDark, lineHeight: 21, textAlign: 'center' }, center: { flex: 1, padding: spacing.lg, gap: spacing.md, justifyContent: 'center', backgroundColor: colors.background }, preview: { flex: 1, backgroundColor: colors.navy }, image: { flex: 1, width: '100%' }, previewBottom: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background }, title: { ...typography.title, color: colors.text }, text: { ...typography.body, color: colors.textMuted, lineHeight: 21 }, error: { ...typography.caption, color: colors.danger } });

@@ -125,4 +125,34 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return response.json() as Promise<T>;
 }
 
+type UploadFile = { uri: string; name: string; type: string };
+
+export async function apiUpload<T>(path: string, file: UploadFile, session?: Session | null): Promise<T> {
+  const form = new FormData();
+  form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${assertApiBaseUrl()}${path}`, {
+      method: 'POST',
+      signal: abortController.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
+      },
+      body: form,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError('A conexão com o servidor excedeu 15 segundos. Tente novamente.');
+    }
+    throw new ApiError('Não foi possível conectar ao servidor. Verifique a URL da API e a rede.');
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) throw await buildApiError(response);
+  return response.json() as Promise<T>;
+}
+
 export type { ErrorResponse, FieldError };

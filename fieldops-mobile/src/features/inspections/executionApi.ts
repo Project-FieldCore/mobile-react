@@ -1,5 +1,5 @@
 import { dataSource } from '@/config/dataSource';
-import { apiRequest } from '@/infrastructure/api/client';
+import { apiRequest, apiUpload } from '@/infrastructure/api/client';
 import { getSession } from '@/infrastructure/storage/session';
 import type { ChecklistSection, Inspection, InspectionPriority, InspectionStatus } from './mockRepository';
 
@@ -129,6 +129,15 @@ export async function startAssignedInspection(id: string, startedAtDevice: strin
     body: { startedAtDevice },
   });
   return toMobileInspection(row);
+}
+
+export async function uploadItemEvidence(inspectionId: string, itemId: string, uri: string): Promise<void> {
+  const name = uri.split('/').pop() || 'evidencia.jpg';
+  await apiUpload(`/inspections/my/${inspectionId}/items/${itemId}/evidence`, {
+    uri,
+    name,
+    type: name.endsWith('.png') ? 'image/png' : 'image/jpeg',
+  }, await session());
 }
 
 export async function saveItemObservation(id: string, itemId: string, observation: string): Promise<void> {
