@@ -2,7 +2,8 @@
  * Fixtures de domínio Sprint-3 (lista/fluxo de inspeção).
  * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
  */
-import { enqueueInspectionForSync, getInspectionDraft } from './draftStore';
+import { captureDeviceLocation } from './deviceLocation';
+import { enqueueInspectionForSync, getInspectionDraft, saveInspectionLocation } from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
@@ -125,9 +126,11 @@ export async function getInspectionChecklist(id: string): Promise<ChecklistSecti
 /** Registra o horário de início e muda a inspeção para em andamento. */
 export async function startInspection(id: string): Promise<void> {
   const startedAt = new Date().toISOString();
+  const location = await captureDeviceLocation();
+  if (location) await saveInspectionLocation(id, location);
   if (usesExecutionApi()) {
     const current = await fetchInspection(id);
-    if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt);
+    if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt, location);
     return;
   }
   const inspection = inspections.find((item) => item.id === id);
@@ -137,7 +140,7 @@ export async function startInspection(id: string): Promise<void> {
   await persistInspection(inspection);
 }
 
-export async function completeInspection(id: string): Promise<void> {
+export async function completeInspection(id: string): Promise<{ coordinatesSent: boolean }> {
   if (usesExecutionApi()) {
     const current = await fetchInspection(id);
     const draft = getInspectionDraft(id);
@@ -153,15 +156,20 @@ export async function completeInspection(id: string): Promise<void> {
         throw new Error(`${item.label} exige uma observação.`);
       }
     }
-    await completeAssignedInspection(id, current?.version ?? 0, answers);
-    return;
+    const location = await captureDeviceLocation();
+    if (location) await saveInspectionLocation(id, location);
+    await completeAssignedInspection(id, current?.version ?? 0, answers, location);
+    return { coordinatesSent: Boolean(location) };
   }
   const inspection = inspections.find((item) => item.id === id);
+  const location = await captureDeviceLocation();
+  if (location) await saveInspectionLocation(id, location);
   if (inspection) {
     inspection.status = 'PENDING_SYNC';
     await persistInspection(inspection);
     await enqueueInspectionForSync(id);
   }
+  return { coordinatesSent: Boolean(location) };
 }
 
 export function getPendingSyncCount(): number {
