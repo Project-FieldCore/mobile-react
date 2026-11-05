@@ -7,6 +7,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
 import { listInspections, type Inspection, type InspectionPriority, type InspectionStatus } from '@/features/inspections/mockRepository';
 
+type DateFilter = 'ALL' | 'TODAY' | 'UPCOMING';
+
 // The inspection list belongs to the tab navigator; detail screens are stacked above it.
 
 type StatusFilter = 'ALL' | InspectionStatus;
@@ -15,13 +17,27 @@ const statusFilters: { value: StatusFilter; label: string }[] = [{ value: 'ALL',
 const priorityFilters: { value: PriorityFilter; label: string }[] = [{ value: 'ALL', label: 'Todas prioridades' }, { value: 'HIGH', label: 'Alta' }, { value: 'MEDIUM', label: 'Média' }, { value: 'LOW', label: 'Baixa' }];
 
 export default function InspectionsScreen() {
-  const [inspections, setInspections] = useState<Inspection[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const [status, setStatus] = useState<StatusFilter>('ALL'); const [priority, setPriority] = useState<PriorityFilter>('ALL');
+  const [inspections, setInspections] = useState<Inspection[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const [status, setStatus] = useState<StatusFilter>('ALL'); const [priority, setPriority] = useState<PriorityFilter>('ALL'); const [when, setWhen] = useState<DateFilter>('ALL');
   const load = () => { setLoading(true); setError(false); listInspections().then(setInspections).catch(() => setError(true)).finally(() => setLoading(false)); };
   useEffect(() => { const timer = setTimeout(load, 0); return () => clearTimeout(timer); }, []);
-  const filtered = useMemo(() => inspections.filter((item) => (status === 'ALL' || item.status === status) && (priority === 'ALL' || item.priority === priority)), [inspections, priority, status]);
+  const filtered = useMemo(() => inspections.filter((item) => (status === 'ALL' || item.status === status) && (priority === 'ALL' || item.priority === priority) && matchesDate(item, when)), [inspections, priority, status, when]);
   if (loading) return <LoadingState title="Carregando inspeções..." />;
   if (error) return <ErrorState title="Não foi possível carregar as inspeções" onRetry={load} />;
-  return <View style={styles.container}><LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}><View style={styles.headerIcon}><Ionicons name="clipboard-outline" size={23} color={colors.textOnDark} /></View><Text style={styles.title}>Inspeções</Text><Text style={styles.subtitle}>Acompanhe suas atividades atribuídas</Text><View style={styles.counter}><Text style={styles.counterText}>{filtered.length} {filtered.length === 1 ? 'atividade' : 'atividades'}</Text></View></LinearGradient><Text style={styles.filterLabel}>Filtrar por status</Text><View style={styles.filters}>{statusFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={status === filter.value} onPress={() => setStatus(filter.value)} />)}</View><Text style={styles.filterLabel}>Filtrar por prioridade</Text><View style={styles.priorityFilters}>{priorityFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={priority === filter.value} onPress={() => setPriority(filter.value)} />)}</View>{filtered.length === 0 ? <EmptyState title="Nenhuma inspeção encontrada" description="Altere os filtros para ver outras inspeções." /> : <ScrollView contentContainerStyle={styles.list}>{filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}</ScrollView>}</View>;
+  return <View style={styles.container}><LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}><View style={styles.headerIcon}><Ionicons name="clipboard-outline" size={23} color={colors.textOnDark} /></View><Text style={styles.title}>Inspeções</Text><Text style={styles.subtitle}>Acompanhe suas atividades atribuídas</Text><View style={styles.counter}><Text style={styles.counterText}>{filtered.length} {filtered.length === 1 ? 'atividade' : 'atividades'}</Text></View></LinearGradient><Text style={styles.filterLabel}>Filtrar por status</Text><View style={styles.filters}>{statusFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={status === filter.value} onPress={() => setStatus(filter.value)} />)}</View><Text style={styles.filterLabel}>Filtrar por data</Text><View style={styles.filters}>{([{ value: 'ALL' as const, label: 'Qualquer data' }, { value: 'TODAY' as const, label: 'Hoje' }, { value: 'UPCOMING' as const, label: 'Próximos dias' }]).map((filter) => <FilterChip key={filter.value} label={filter.label} selected={when === filter.value} onPress={() => setWhen(filter.value)} />)}</View><Text style={styles.filterLabel}>Filtrar por prioridade</Text><View style={styles.priorityFilters}>{priorityFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={priority === filter.value} onPress={() => setPriority(filter.value)} />)}</View>{filtered.length === 0 ? <EmptyState title="Nenhuma inspeção encontrada" description="Altere os filtros para ver outras inspeções." /> : <ScrollView contentContainerStyle={styles.list}>{filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}</ScrollView>}</View>;
+}
+function matchesDate(inspection: Inspection, filter: DateFilter) {
+  if (filter === 'ALL') return true;
+  const today = inspection.scheduledAt.startsWith('Hoje') || isSameLocalDay(inspection.scheduledFor, 0);
+  if (filter === 'TODAY') return today;
+  return inspection.scheduledAt.startsWith('Amanhã') || isSameLocalDay(inspection.scheduledFor, 1) || (!today && Boolean(inspection.scheduledFor));
+}
+function isSameLocalDay(iso: string | undefined, offsetDays: number) {
+  if (!iso) return false;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const target = new Date();
+  target.setDate(target.getDate() + offsetDays);
+  return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate();
 }
 function FilterChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) { return <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}><Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></Pressable>; }
 function InspectionCard({ inspection }: { inspection: Inspection }) { const color = priorityColor[inspection.priority]; return <Pressable onPress={() => router.push({ pathname: '/inspections/[id]', params: { id: inspection.id } })} style={styles.pressable}><Card style={styles.card}><View style={[styles.priorityStripe, { backgroundColor: color }]} /><View style={styles.cardBody}><View style={styles.cardHeader}><Text style={styles.client}>{inspection.client}</Text><View style={[styles.priorityBadge, { backgroundColor: `${color}18` }]}><Text style={[styles.priority, { color }]}>{priorityLabel[inspection.priority]}</Text></View></View><Text style={styles.equipment}>{inspection.equipment}</Text><View style={styles.metaRow}><Ionicons name="location-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.site}</Text></View><View style={styles.metaRow}><Ionicons name="time-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.scheduledAt}</Text></View><View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: color }]} /><Text style={styles.status}>{statusLabel[inspection.status]}</Text><Ionicons name="chevron-forward" size={18} color={colors.textMuted} /></View></View></Card></Pressable>; }

@@ -2,7 +2,8 @@
  * Fixtures de domínio Sprint-3 (lista/fluxo de inspeção).
  * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
  */
-import { enqueueInspectionForSync } from './draftStore';
+import { enqueueInspectionForSync, getInspectionDraft } from './draftStore';
+import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
@@ -12,9 +13,11 @@ export type InspectionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type ChecklistItem = {
   id: string;
   label: string;
-  type: 'text' | 'number' | 'boolean' | 'conformity' | 'choice' | 'date';
+  type: 'text' | 'long' | 'number' | 'boolean' | 'conformity' | 'choice' | 'date';
   required?: boolean;
   options?: string[];
+  observationRequired?: boolean;
+  evidenceRequired?: boolean;
 };
 
 export type ChecklistSection = {
@@ -29,9 +32,12 @@ export type Inspection = {
   site: string;
   equipment: string;
   scheduledAt: string;
+  scheduledFor?: string;
   priority: InspectionPriority;
   status: InspectionStatus;
   instructions: string;
+  startedAt?: string;
+  version?: number;
 };
 
 const inspections: Inspection[] = [
@@ -95,21 +101,61 @@ const defaultChecklist: ChecklistSection[] = [
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export async function listInspections(): Promise<Inspection[]> {
+  if (usesExecutionApi()) {
+    const downloaded = await fetchAssignedInspections();
+    await Promise.all(downloaded.map((inspection) => persistInspection(inspection)));
+    return downloaded;
+  }
   await wait(350);
   return getCachedInspections();
 }
 
 export async function getInspection(id: string): Promise<Inspection | null> {
+  if (usesExecutionApi()) return fetchInspection(id);
   await wait(200);
   return (await getCachedInspections()).find((inspection) => inspection.id === id) ?? null;
 }
 
 export async function getInspectionChecklist(id: string): Promise<ChecklistSection[] | null> {
+  if (usesExecutionApi()) return fetchChecklist(id);
   const inspection = await getInspection(id);
   return inspection ? defaultChecklist : null;
 }
 
+/** Registra o horário de início e muda a inspeção para em andamento. */
+export async function startInspection(id: string): Promise<void> {
+  const startedAt = new Date().toISOString();
+  if (usesExecutionApi()) {
+    const current = await fetchInspection(id);
+    if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt);
+    return;
+  }
+  const inspection = inspections.find((item) => item.id === id);
+  if (!inspection || inspection.status !== 'ASSIGNED') return;
+  inspection.status = 'IN_PROGRESS';
+  inspection.startedAt = startedAt;
+  await persistInspection(inspection);
+}
+
 export async function completeInspection(id: string): Promise<void> {
+  if (usesExecutionApi()) {
+    const current = await fetchInspection(id);
+    const draft = getInspectionDraft(id);
+    const checklist = await fetchChecklist(id);
+    const answers = checklist.flatMap((section) => section.items).map((item) => ({
+      itemId: item.id,
+      valueText: draft?.answers[item.id],
+      conformity: draft?.answers[item.id] === 'Não conforme' ? 'NON_CONFORMING' : draft?.answers[item.id] === 'Conforme' ? 'CONFORMING' : draft?.answers[item.id] === 'Não aplicável' ? 'NOT_APPLICABLE' : undefined,
+      observation: draft?.nonConformityDescription,
+    }));
+    for (const item of checklist.flatMap((section) => section.items)) {
+      if (item.observationRequired && draft?.answers[item.id] === 'Não conforme' && !draft.nonConformityDescription?.trim()) {
+        throw new Error(`${item.label} exige uma observação.`);
+      }
+    }
+    await completeAssignedInspection(id, current?.version ?? 0, answers);
+    return;
+  }
   const inspection = inspections.find((item) => item.id === id);
   if (inspection) {
     inspection.status = 'PENDING_SYNC';
