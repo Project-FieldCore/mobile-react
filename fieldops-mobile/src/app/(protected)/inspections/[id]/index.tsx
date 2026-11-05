@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, LoadingState, spacing, typography } from '@/design-system';
-import { getInspection, type Inspection } from '@/features/inspections/mockRepository';
+import { getInspection, startInspection, type Inspection } from '@/features/inspections/mockRepository';
 import { saveInspectionLocation } from '@/features/inspections/draftStore';
 
 // The detail screen is the index route for a single inspection.
@@ -58,7 +58,7 @@ export default function InspectionDetailScreen() {
       <Card style={styles.checkInCard}><Text style={styles.checkInTitle}>Check-in no local</Text><Text style={styles.checkInText}>{checkIn ? `Localização registrada: ${checkIn}` : 'Registre sua localização antes de começar. Este passo é opcional.'}</Text>{checkInError ? <Text style={styles.checkInError}>{checkInError}</Text> : null}<Button label={checkIn ? 'Atualizar localização' : 'Registrar localização'} variant="secondary" loading={isCheckingIn} onPress={() => void registerCheckIn()} /></Card>
       <Button label="Identificar equipamento por QR Code" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/scanner`)} />
       <Button label="Adicionar evidências fotográficas" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/evidence`)} />
-      <Button label="Iniciar checklist" onPress={() => router.push(`/inspections/${inspection.id}/checklist`)} />
+      <Button label="Iniciar checklist" onPress={() => { void startInspection(inspection.id).then(() => router.push(`/inspections/${inspection.id}/checklist`)); }} />
       <Button label="Voltar para inspeções" variant="secondary" onPress={() => router.back()} />
       </View>
     </ScrollView>
