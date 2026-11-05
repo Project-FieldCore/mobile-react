@@ -23,6 +23,8 @@ export type PendingOperation = {
   status: SyncOperationStatus;
   attempts: number;
   lastError?: string;
+  operationType?: string;
+  payload?: string;
 };
 
 const drafts = new Map<string, InspectionDraft>();
@@ -39,6 +41,11 @@ async function getDatabase() {
         CREATE TABLE IF NOT EXISTS sync_operations (id TEXT PRIMARY KEY NOT NULL, inspection_id TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT);
         INSERT OR IGNORE INTO sync_operations (id, inspection_id, created_at, status, attempts)
           SELECT inspection_id || ':' || created_at, inspection_id, created_at, 'PENDING', 0 FROM sync_outbox;`);
+      const columns = await database.getAllAsync<{ name: string }>('PRAGMA table_info(sync_operations)');
+      if (!columns.some((column) => column.name === 'operation_type')) {
+        await database.execAsync('ALTER TABLE sync_operations ADD COLUMN operation_type TEXT');
+        await database.execAsync('ALTER TABLE sync_operations ADD COLUMN payload TEXT');
+      }
       return database;
     });
   }
@@ -75,7 +82,9 @@ export function saveInspectionAnswers(
     nonConformityDescription: nonConformityDescription || undefined,
   };
   drafts.set(id, next);
-  return queueInspectionDraftPersistence(id, next);
+  const persisted = queueInspectionDraftPersistence(id, next);
+  void persisted.then(() => enqueueChange(id, 'ANSWERS', { answers, nonConformityDescription })).catch(() => undefined);
+  return persisted;
 }
 
 async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
@@ -85,6 +94,7 @@ async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
 export async function addInspectionEvidence(id: string, evidence: LocalEvidence): Promise<void> {
   const draft = await getOrCreateDraft(id);
   saveInspectionDraft(id, { ...draft, evidence: [...(draft.evidence ?? []), evidence] });
+  await enqueueChange(id, 'EVIDENCE', evidence);
 }
 
 export async function setEvidenceUploadStatus(id: string, uri: string, uploadStatus: EvidenceUploadStatus): Promise<void> {
@@ -98,6 +108,7 @@ export async function setEvidenceUploadStatus(id: string, uri: string, uploadSta
 export async function saveInspectionLocation(id: string, location: InspectionLocation): Promise<void> {
   const draft = await getOrCreateDraft(id);
   saveInspectionDraft(id, { ...draft, location });
+  await enqueueChange(id, 'LOCATION', location);
 }
 
 export async function saveEquipmentIdentification(id: string, equipmentCode: string): Promise<void> {
@@ -164,25 +175,42 @@ async function removePersistedInspectionDraft(id: string) {
 }
 
 export async function enqueueInspectionForSync(inspectionId: string) {
+  await enqueueChange(inspectionId, 'COMPLETE', { inspectionId });
+}
+
+export async function enqueueChange(inspectionId: string, operationType: string, payload: unknown): Promise<void> {
   const createdAt = new Date().toISOString();
-  const operation: PendingOperation = { id: `${inspectionId}:${createdAt}`, inspectionId, createdAt, status: 'PENDING', attempts: 0 };
+  const operation: PendingOperation = {
+    id: `${inspectionId}:${operationType}:${createdAt}`,
+    inspectionId,
+    createdAt,
+    status: 'PENDING',
+    attempts: 0,
+    operationType,
+    payload: JSON.stringify(payload),
+  };
   if (Platform.OS === 'web') {
     const current = await getPendingOperations();
-    const next = [...current.filter((item) => item.inspectionId !== inspectionId), operation];
-    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify(next));
+    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify([...current, operation]));
     return;
   }
   const database = await getDatabase();
-  await database.runAsync('INSERT OR REPLACE INTO sync_operations (id, inspection_id, created_at, status, attempts, last_error) VALUES (?, ?, ?, ?, ?, ?)', operation.id, operation.inspectionId, operation.createdAt, operation.status, operation.attempts, null);
+  await database.runAsync(
+    'INSERT INTO sync_operations (id, inspection_id, created_at, status, attempts, last_error, operation_type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    operation.id, operation.inspectionId, operation.createdAt, operation.status, operation.attempts, null, operation.operationType ?? null, operation.payload ?? null,
+  );
 }
 
 export async function getPendingOperations(): Promise<PendingOperation[]> {
   if (Platform.OS === 'web') {
     if (typeof localStorage === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem(webOutboxKey) ?? '[]') as PendingOperation[]; } catch { return []; }
+    try {
+      const operations = JSON.parse(localStorage.getItem(webOutboxKey) ?? '[]') as PendingOperation[];
+      return operations.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    } catch { return []; }
   }
   const database = await getDatabase();
-  return database.getAllAsync<PendingOperation>('SELECT id, inspection_id AS inspectionId, created_at AS createdAt, status, attempts, last_error AS lastError FROM sync_operations ORDER BY created_at DESC');
+  return database.getAllAsync<PendingOperation>('SELECT id, inspection_id AS inspectionId, created_at AS createdAt, status, attempts, last_error AS lastError, operation_type AS operationType, payload FROM sync_operations ORDER BY created_at ASC');
 }
 
 export async function updateSyncOperation(id: string, status: SyncOperationStatus, lastError?: string): Promise<void> {
