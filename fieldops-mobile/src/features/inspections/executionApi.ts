@@ -144,6 +144,14 @@ export async function uploadItemEvidence(inspectionId: string, itemId: string, u
   }, await session());
 }
 
+export async function registerNonConformity(inspectionId: string, itemId: string, severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', description: string): Promise<void> {
+  await apiRequest(`/inspections/my/${inspectionId}/non-conformities`, {
+    method: 'POST',
+    session: await session(),
+    body: { itemId, severity, description },
+  });
+}
+
 export async function saveItemObservation(id: string, itemId: string, observation: string): Promise<void> {
   await apiRequest(`/inspections/my/${id}/items/${itemId}/observation`, {
     method: 'PUT',
