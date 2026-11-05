@@ -67,13 +67,15 @@ export function saveInspectionAnswers(
   id: string,
   answers: Record<string, string>,
   nonConformityDescription: string,
-) {
+): Promise<void> {
   const draft = drafts.get(id) ?? { answers: {}, evidence: [] };
-  saveInspectionDraft(id, {
+  const next = {
     ...draft,
     answers,
     nonConformityDescription: nonConformityDescription || undefined,
-  });
+  };
+  drafts.set(id, next);
+  return queueInspectionDraftPersistence(id, next);
 }
 
 async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
@@ -126,7 +128,7 @@ export async function hydrateInspectionDraft(id: string): Promise<InspectionDraf
   return draft;
 }
 
-function queueInspectionDraftPersistence(id: string, draft: InspectionDraft) {
+function queueInspectionDraftPersistence(id: string, draft: InspectionDraft): Promise<void> {
   const previous = draftPersistenceQueues.get(id) ?? Promise.resolve();
   const next = previous
     .catch(() => undefined)
@@ -138,6 +140,7 @@ function queueInspectionDraftPersistence(id: string, draft: InspectionDraft) {
     .finally(() => {
       if (draftPersistenceQueues.get(id) === next) draftPersistenceQueues.delete(id);
     });
+  return next;
 }
 
 async function persistInspectionDraft(id: string, draft: InspectionDraft) {

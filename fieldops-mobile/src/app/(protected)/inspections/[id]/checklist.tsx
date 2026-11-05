@@ -46,8 +46,9 @@ export default function ChecklistScreen() {
   });
   const finish = () => {
     if (pending.length || requiresDescription) { setSubmitted(true); return; }
-    saveInspectionAnswers(id, answers, hasNonConformity ? nonConformityDescription.trim() : '');
-    router.push({ pathname: '/inspections/[id]/summary', params: { id } });
+    void saveInspectionAnswers(id, answers, hasNonConformity ? nonConformityDescription.trim() : '').then(() => {
+      router.push({ pathname: '/inspections/[id]/summary', params: { id } });
+    });
   };
   return <View style={styles.container}><View style={styles.header}><Text style={styles.title}>Checklist</Text><Text style={styles.progressText}>{completed}/{required.length} obrigatórios respondidos{pending.length ? ` · Pendentes: ${pending.map((item) => item.label).join(', ')}` : ''}</Text><View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View></View><ScrollView contentContainerStyle={styles.content}>{sections.map((section) => <View key={section.title} style={styles.section}><Text style={styles.sectionTitle}>{section.title}</Text>{section.items.map((item) => <Card key={item.id} style={styles.card}><Text style={styles.label}>{item.label}{item.required ? <Text style={styles.required}> *</Text> : null}</Text><Input item={item} value={answers[item.id]} onChange={(value) => change(item.id, value)} /><Button label="Adicionar foto" variant="secondary" onPress={() => router.push({ pathname: '/inspections/[id]/evidence', params: { id, itemId: item.id } })} />{item.type === 'conformity' && answers[item.id] === 'Não conforme' ? <NonConformityFields inspectionId={id} itemId={item.id} description={nonConformityDescription} onDescription={setNonConformityDescription} showError={submitted && requiresDescription} /> : null}{submitted && item.required && !answers[item.id] ? <Text style={styles.error}>Este item é obrigatório.</Text> : null}</Card>)}</View>)}<Button label="Concluir checklist" onPress={finish} /><Button label="Voltar" variant="secondary" onPress={() => router.back()} /></ScrollView></View>;
 }
