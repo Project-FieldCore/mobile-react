@@ -10,7 +10,8 @@ export type InspectionDraft = {
   equipmentCode?: string;
 };
 
-export type LocalEvidence = { uri: string; capturedAt: string; itemId?: string };
+export type EvidenceUploadStatus = 'UPLOADED' | 'PENDING';
+export type LocalEvidence = { uri: string; capturedAt: string; itemId?: string; uploadStatus?: EvidenceUploadStatus };
 export type InspectionLocation = { latitude: number; longitude: number; capturedAt: string };
 
 export type SyncOperationStatus = 'PENDING' | 'SYNCING' | 'FAILED' | 'CONFLICT';
@@ -82,6 +83,14 @@ async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
 export async function addInspectionEvidence(id: string, evidence: LocalEvidence): Promise<void> {
   const draft = await getOrCreateDraft(id);
   saveInspectionDraft(id, { ...draft, evidence: [...(draft.evidence ?? []), evidence] });
+}
+
+export async function setEvidenceUploadStatus(id: string, uri: string, uploadStatus: EvidenceUploadStatus): Promise<void> {
+  const draft = await getOrCreateDraft(id);
+  saveInspectionDraft(id, {
+    ...draft,
+    evidence: (draft.evidence ?? []).map((item) => item.uri === uri ? { ...item, uploadStatus } : item),
+  });
 }
 
 export async function saveInspectionLocation(id: string, location: InspectionLocation): Promise<void> {
