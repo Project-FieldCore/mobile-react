@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, colors, radius, spacing, typography } from '@/design-system';
-import { getInspectionDraft, hydrateInspectionDraft, saveInspectionDraft } from '@/features/inspections/draftStore';
+import { getInspectionDraft, hydrateInspectionDraft, saveInspectionAnswers } from '@/features/inspections/draftStore';
 import { getInspectionChecklist, type ChecklistItem, type ChecklistSection } from '@/features/inspections/mockRepository';
 
 export default function ChecklistScreen() {
@@ -12,14 +12,22 @@ export default function ChecklistScreen() {
   const [answers, setAnswers] = useState<Record<string, string>>(savedDraft?.answers ?? {});
   const [nonConformityDescription, setNonConformityDescription] = useState(savedDraft?.nonConformityDescription ?? '');
   const [submitted, setSubmitted] = useState(false);
+  const draftHydrated = useRef(false);
 
   useEffect(() => {
     void hydrateInspectionDraft(id).then((draft) => {
-      if (!draft) return;
+      if (!draft) {
+        draftHydrated.current = true;
+        return;
+      }
       setAnswers(draft.answers);
       setNonConformityDescription(draft.nonConformityDescription ?? '');
+      draftHydrated.current = true;
     });
   }, [id]);
+  useEffect(() => {
+    if (draftHydrated.current) saveInspectionAnswers(id, answers, nonConformityDescription);
+  }, [answers, id, nonConformityDescription]);
   useEffect(() => {
     void getInspectionChecklist(id).then((checklist) => setSections(checklist ?? []));
   }, [id]);
@@ -30,10 +38,14 @@ export default function ChecklistScreen() {
   const pending = required.filter((item) => !answers[item.id]);
   const requiresDescription = hasNonConformity && !nonConformityDescription.trim();
   const progress = useMemo(() => Math.round((completed / required.length) * 100), [completed, required.length]);
-  const change = (fieldId: string, value: string) => setAnswers((current) => ({ ...current, [fieldId]: value }));
+  const change = (fieldId: string, value: string) => setAnswers((current) => {
+    const nextAnswers = { ...current, [fieldId]: value };
+    saveInspectionAnswers(id, nextAnswers, nonConformityDescription);
+    return nextAnswers;
+  });
   const finish = () => {
     if (pending.length || requiresDescription) { setSubmitted(true); return; }
-    saveInspectionDraft(id, { ...savedDraft, answers, evidence: savedDraft?.evidence ?? [], nonConformityDescription: hasNonConformity ? nonConformityDescription.trim() : undefined });
+    saveInspectionAnswers(id, answers, hasNonConformity ? nonConformityDescription.trim() : '');
     router.push({ pathname: '/inspections/[id]/summary', params: { id } });
   };
   return <View style={styles.container}><View style={styles.header}><Text style={styles.title}>Checklist</Text><Text style={styles.progressText}>{completed}/{required.length} obrigatórios respondidos</Text><View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View></View><ScrollView contentContainerStyle={styles.content}>{sections.map((section) => <View key={section.title} style={styles.section}><Text style={styles.sectionTitle}>{section.title}</Text>{section.items.map((item) => <Card key={item.id} style={styles.card}><Text style={styles.label}>{item.label}{item.required ? <Text style={styles.required}> *</Text> : null}</Text><Input item={item} value={answers[item.id]} onChange={(value) => change(item.id, value)} /><Button label="Adicionar foto" variant="secondary" onPress={() => router.push({ pathname: '/inspections/[id]/evidence', params: { id, itemId: item.id } })} />{item.id === 'visual' && hasNonConformity ? <View style={styles.nonConformity}><Text style={styles.nonConformityLabel}>Descreva a não conformidade *</Text><TextInput value={nonConformityDescription} onChangeText={setNonConformityDescription} placeholder="Informe o que foi identificado e a ação necessária" placeholderTextColor={colors.textMuted} multiline style={[styles.input, styles.area]} />{submitted && requiresDescription ? <Text style={styles.error}>Descreva a não conformidade para continuar.</Text> : null}</View> : null}{submitted && item.required && !answers[item.id] ? <Text style={styles.error}>Este item é obrigatório.</Text> : null}</Card>)}</View>)}<Button label="Concluir checklist" onPress={finish} /><Button label="Voltar" variant="secondary" onPress={() => router.back()} /></ScrollView></View>;
