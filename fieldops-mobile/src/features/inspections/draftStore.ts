@@ -25,6 +25,7 @@ export type PendingOperation = {
 };
 
 const drafts = new Map<string, InspectionDraft>();
+const draftPersistenceQueues = new Map<string, Promise<void>>();
 const webDraftsKey = 'fieldops.inspection-drafts';
 const webOutboxKey = 'fieldops.sync-outbox';
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -54,7 +55,24 @@ function writeWebDrafts(value: Record<string, InspectionDraft>) {
 
 export function saveInspectionDraft(id: string, draft: InspectionDraft) {
   drafts.set(id, draft);
-  void persistInspectionDraft(id, draft);
+  queueInspectionDraftPersistence(id, draft);
+}
+
+/**
+ * Persiste o estado completo do checklist sem descartar dados coletados em
+ * outras etapas (foto, GPS e identificação do equipamento).
+ */
+export function saveInspectionAnswers(
+  id: string,
+  answers: Record<string, string>,
+  nonConformityDescription: string,
+) {
+  const draft = drafts.get(id) ?? { answers: {}, evidence: [] };
+  saveInspectionDraft(id, {
+    ...draft,
+    answers,
+    nonConformityDescription: nonConformityDescription || undefined,
+  });
 }
 
 async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
@@ -97,6 +115,20 @@ export async function hydrateInspectionDraft(id: string): Promise<InspectionDraf
   const draft = JSON.parse(row.content) as InspectionDraft;
   drafts.set(id, draft);
   return draft;
+}
+
+function queueInspectionDraftPersistence(id: string, draft: InspectionDraft) {
+  const previous = draftPersistenceQueues.get(id) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => persistInspectionDraft(id, draft));
+
+  draftPersistenceQueues.set(id, next);
+  void next
+    .catch(() => undefined)
+    .finally(() => {
+      if (draftPersistenceQueues.get(id) === next) draftPersistenceQueues.delete(id);
+    });
 }
 
 async function persistInspectionDraft(id: string, draft: InspectionDraft) {
