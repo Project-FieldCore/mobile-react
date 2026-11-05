@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, colors, radius, spacing, typography } from '@/design-system';
 import { getInspectionDraft, hydrateInspectionDraft, saveInspectionAnswers } from '@/features/inspections/draftStore';
@@ -37,7 +37,7 @@ export default function ChecklistScreen() {
   const completed = required.filter((item) => answers[item.id]).length;
   const pending = required.filter((item) => !answers[item.id]);
   const requiresDescription = hasNonConformity && !nonConformityDescription.trim();
-  const progress = useMemo(() => Math.round((completed / required.length) * 100), [completed, required.length]);
+  const progress = required.length ? Math.round((completed / required.length) * 100) : 0;
   const change = (fieldId: string, value: string) => setAnswers((current) => {
     const nextAnswers = { ...current, [fieldId]: value };
     saveInspectionAnswers(id, nextAnswers, nonConformityDescription);
