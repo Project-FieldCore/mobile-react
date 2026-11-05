@@ -122,11 +122,15 @@ export async function confirmInspectionEquipment(id: string, qrCode: string): Pr
   return toMobileInspection(row);
 }
 
-export async function startAssignedInspection(id: string, startedAtDevice: string): Promise<Inspection> {
+export async function startAssignedInspection(
+  id: string,
+  startedAtDevice: string,
+  location?: { latitude: number; longitude: number },
+): Promise<Inspection> {
   const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}/start`, {
     method: 'POST',
     session: await session(),
-    body: { startedAtDevice },
+    body: { startedAtDevice, latitude: location?.latitude, longitude: location?.longitude },
   });
   return toMobileInspection(row);
 }
@@ -148,10 +152,21 @@ export async function saveItemObservation(id: string, itemId: string, observatio
   });
 }
 
-export async function completeAssignedInspection(id: string, version: number, answers: { itemId: string; valueText?: string; conformity?: string; observation?: string }[]): Promise<void> {
+export async function completeAssignedInspection(
+  id: string,
+  version: number,
+  answers: { itemId: string; valueText?: string; conformity?: string; observation?: string }[],
+  location?: { latitude: number; longitude: number },
+): Promise<void> {
   await apiRequest(`/inspections/my/${id}/complete`, {
     method: 'POST',
     session: await session(),
-    body: { version, completedAtDevice: new Date().toISOString(), answers },
+    body: {
+      version,
+      completedAtDevice: new Date().toISOString(),
+      latitude: location?.latitude,
+      longitude: location?.longitude,
+      answers,
+    },
   });
 }
