@@ -100,12 +100,8 @@ export async function fetchAssignedInspections(): Promise<Inspection[]> {
 }
 
 export async function fetchInspection(id: string): Promise<Inspection | null> {
-  try {
-    const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}`, { session: await session() });
-    return toMobileInspection(row);
-  } catch {
-    return null;
-  }
+  const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}`, { session: await session() });
+  return toMobileInspection(row);
 }
 
 export async function fetchChecklist(id: string): Promise<ChecklistSection[]> {

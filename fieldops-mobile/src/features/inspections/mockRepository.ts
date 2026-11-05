@@ -69,6 +69,57 @@ async function getCachedInspections(): Promise<Inspection[]> {
   return inspections;
 }
 
+const webDownloadKey = 'fieldops.downloaded-inspections';
+const webChecklistKey = 'fieldops.downloaded-checklists';
+
+function readWebJson<T>(key: string): T | undefined {
+  if (typeof localStorage === 'undefined') return undefined;
+  try { return JSON.parse(localStorage.getItem(key) ?? 'null') as T; } catch { return undefined; }
+}
+
+async function downloadedDatabase() {
+  const database = await getDatabase();
+  await database.execAsync(`CREATE TABLE IF NOT EXISTS downloaded_inspections (id TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS downloaded_checklists (inspection_id TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL);`);
+  return database;
+}
+
+async function saveDownloadedInspection(inspection: Inspection): Promise<void> {
+  if (Platform.OS === 'web') {
+    const current = readWebJson<Record<string, Inspection>>(webDownloadKey) ?? {};
+    current[inspection.id] = inspection;
+    localStorage.setItem(webDownloadKey, JSON.stringify(current));
+    return;
+  }
+  const database = await downloadedDatabase();
+  await database.runAsync('INSERT OR REPLACE INTO downloaded_inspections (id, content) VALUES (?, ?)', inspection.id, JSON.stringify(inspection));
+}
+
+async function readDownloadedInspections(): Promise<Inspection[]> {
+  if (Platform.OS === 'web') return Object.values(readWebJson<Record<string, Inspection>>(webDownloadKey) ?? {});
+  const database = await downloadedDatabase();
+  const rows = await database.getAllAsync<{ content: string }>('SELECT content FROM downloaded_inspections');
+  return rows.map((row) => JSON.parse(row.content) as Inspection);
+}
+
+async function saveDownloadedChecklist(id: string, checklist: ChecklistSection[]): Promise<void> {
+  if (Platform.OS === 'web') {
+    const current = readWebJson<Record<string, ChecklistSection[]>>(webChecklistKey) ?? {};
+    current[id] = checklist;
+    localStorage.setItem(webChecklistKey, JSON.stringify(current));
+    return;
+  }
+  const database = await downloadedDatabase();
+  await database.runAsync('INSERT OR REPLACE INTO downloaded_checklists (inspection_id, content) VALUES (?, ?)', id, JSON.stringify(checklist));
+}
+
+async function readDownloadedChecklist(id: string): Promise<ChecklistSection[] | null> {
+  if (Platform.OS === 'web') return readWebJson<Record<string, ChecklistSection[]>>(webChecklistKey)?.[id] ?? null;
+  const database = await downloadedDatabase();
+  const row = await database.getFirstAsync<{ content: string }>('SELECT content FROM downloaded_checklists WHERE inspection_id = ?', id);
+  return row ? JSON.parse(row.content) as ChecklistSection[] : null;
+}
+
 async function persistInspection(inspection: Inspection): Promise<void> {
   if (Platform.OS === 'web') return;
   const database = await getDatabase();
@@ -103,22 +154,44 @@ const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resol
 
 export async function listInspections(): Promise<Inspection[]> {
   if (usesExecutionApi()) {
-    const downloaded = await fetchAssignedInspections();
-    await Promise.all(downloaded.map((inspection) => persistInspection(inspection)));
-    return downloaded;
+    try {
+      const downloaded = await fetchAssignedInspections();
+      await Promise.all(downloaded.map((inspection) => saveDownloadedInspection(inspection)));
+      return downloaded;
+    } catch (error) {
+      const cached = await readDownloadedInspections();
+      if (cached.length) return cached;
+      throw error;
+    }
   }
   await wait(350);
   return getCachedInspections();
 }
 
 export async function getInspection(id: string): Promise<Inspection | null> {
-  if (usesExecutionApi()) return fetchInspection(id);
+  if (usesExecutionApi()) {
+    try {
+      const inspection = await fetchInspection(id);
+      if (inspection) await saveDownloadedInspection(inspection);
+      return inspection;
+    } catch {
+      return (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null;
+    }
+  }
   await wait(200);
   return (await getCachedInspections()).find((inspection) => inspection.id === id) ?? null;
 }
 
 export async function getInspectionChecklist(id: string): Promise<ChecklistSection[] | null> {
-  if (usesExecutionApi()) return fetchChecklist(id);
+  if (usesExecutionApi()) {
+    try {
+      const checklist = await fetchChecklist(id);
+      await saveDownloadedChecklist(id, checklist);
+      return checklist;
+    } catch {
+      return readDownloadedChecklist(id);
+    }
+  }
   const inspection = await getInspection(id);
   return inspection ? defaultChecklist : null;
 }
@@ -129,8 +202,13 @@ export async function startInspection(id: string): Promise<void> {
   const location = await captureDeviceLocation();
   if (location) await saveInspectionLocation(id, location);
   if (usesExecutionApi()) {
-    const current = await fetchInspection(id);
-    if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt, location);
+    try {
+      const current = await fetchInspection(id);
+      if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt, location);
+    } catch {
+      const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id);
+      if (!cached) throw new Error('Não foi possível abrir a inspeção sem uma cópia baixada.');
+    }
     return;
   }
   const inspection = inspections.find((item) => item.id === id);
