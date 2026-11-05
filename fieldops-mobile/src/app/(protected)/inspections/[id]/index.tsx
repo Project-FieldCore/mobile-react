@@ -27,7 +27,7 @@ export default function InspectionDetailScreen() {
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
-        setCheckInError('A localização não foi permitida. Você pode continuar a inspeção sem o check-in.');
+        setCheckInError('A localização não foi permitida. Você pode continuar a inspeção sem as coordenadas.');
         return;
       }
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
