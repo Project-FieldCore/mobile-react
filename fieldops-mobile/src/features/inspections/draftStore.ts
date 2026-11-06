@@ -223,6 +223,16 @@ export async function updateSyncOperation(id: string, status: SyncOperationStatu
   await database.runAsync('UPDATE sync_operations SET status = ?, attempts = attempts + 1, last_error = ? WHERE id = ?', status, lastError ?? null, id);
 }
 
+export async function removeSyncOperation(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const next = (await getPendingOperations()).filter((operation) => operation.id !== id);
+    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify(next));
+    return;
+  }
+  const database = await getDatabase();
+  await database.runAsync('DELETE FROM sync_operations WHERE id = ?', id);
+}
+
 export async function retryFailedOperations(): Promise<number> {
   const failed = (await getPendingOperations()).filter((operation) => canRetry(operation.status));
   await Promise.all(failed.map((operation) => updateSyncOperation(operation.id, 'PENDING')));
