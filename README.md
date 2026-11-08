@@ -87,36 +87,42 @@ src/
 ### Instalação
 
 ```bash
-git clone <url-do-repositorio>
-cd fieldcore-mobile
-npm install
+git clone https://github.com/Project-FieldCore/mobile-react.git
+cd mobile-react/fieldops-mobile
+npm ci
 ```
 
 ### Configuração de ambiente
 
 Crie um arquivo `.env` na raiz com base no `.env.example`:
 
-```bash
-cp .env.example .env
+No PowerShell, copie o arquivo de exemplo:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
 Variáveis principais:
 
 ```
 EXPO_PUBLIC_API_URL=http://localhost:8080/api/v1
-EXPO_PUBLIC_ENV=local
+EXPO_PUBLIC_DATA_SOURCE=api
 ```
+
+Use `EXPO_PUBLIC_DATA_SOURCE=mock` para trabalhar sem backend. Para usar a API local em um celular físico, substitua `localhost` pelo IPv4 da máquina na mesma rede, por exemplo `http://192.168.0.10:8080/api/v1`.
 
 > Cada ambiente (local, integração, demonstração) deve possuir sua própria URL de API e configuração — nunca compartilhar credenciais entre ambientes.
 
 ### Executando localmente
 
-```bash
-npx expo start
+```powershell
+npx expo start --clear
 ```
 
 - Pressione `a` para abrir no emulador Android
 - Ou escaneie o QR Code com o app Expo Go / build de desenvolvimento no dispositivo físico
+
+Para acessar pelo celular, execute `npx expo start --clear --lan`. O Expo Go instalado deve ser compatível com o SDK definido em `package.json`.
 
 ---
 
@@ -129,6 +135,7 @@ cd fieldops-mobile
 npm ci
 npm run lint
 npm run typecheck
+npm test
 ```
 
 Detalhes: [docs/CI.md](docs/CI.md). Convenção dos 3 repos: [CI_CONVENTION.md](https://github.com/Project-FieldCore/docs/blob/main/PROJECT_MANAGEMENT/CI_CONVENTION.md).
