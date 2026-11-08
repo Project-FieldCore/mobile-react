@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, colors, EmptyState, LoadingState, spacing, typography } from '@/design-system';
+import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import { getInspection, startInspection, type Inspection } from '@/features/inspections/mockRepository';
 import { hydrateInspectionDraft, saveInspectionLocation } from '@/features/inspections/draftStore';
 
@@ -13,12 +13,24 @@ import { hydrateInspectionDraft, saveInspectionLocation } from '@/features/inspe
 export default function InspectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [inspection, setInspection] = useState<Inspection | null | undefined>();
+  const [loadError, setLoadError] = useState(false);
   const [checkIn, setCheckIn] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [equipmentCode, setEquipmentCode] = useState<string | null>(null);
 
-  useEffect(() => { void getInspection(id).then(setInspection); }, [id]);
+  const loadInspection = useCallback(() => {
+    setInspection(undefined);
+    setLoadError(false);
+    void getInspection(id).then(setInspection).catch(() => setLoadError(true));
+  }, [id]);
+
+  useEffect(() => {
+    const timer = setTimeout(loadInspection, 0);
+    return () => clearTimeout(timer);
+  }, [loadInspection]);
   useFocusEffect(useCallback(() => { void hydrateInspectionDraft(id).then((draft) => setEquipmentCode(draft?.equipmentCode ?? null)); }, [id]));
 
   const registerCheckIn = async () => {
@@ -40,7 +52,21 @@ export default function InspectionDetailScreen() {
     }
   };
 
+  const startChecklist = async () => {
+    setIsStarting(true);
+    setStartError(null);
+    try {
+      await startInspection(inspection?.id ?? id);
+      router.push(`/inspections/${inspection?.id ?? id}/checklist`);
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : 'Não foi possível iniciar a inspeção. Tente novamente.');
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
   if (inspection === undefined) return <LoadingState title="Carregando inspeção..." />;
+  if (loadError) return <ErrorState title="Não foi possível carregar a inspeção" description="Verifique sua conexão e tente novamente." onRetry={loadInspection} />;
   if (!inspection) return <EmptyState title="Inspeção não encontrada" description="Volte à lista e selecione outra inspeção." />;
 
   return (
@@ -61,7 +87,8 @@ export default function InspectionDetailScreen() {
       {equipmentCode ? <Text style={styles.checkInText}>Equipamento confirmado: {equipmentCode}</Text> : null}
       <Button label="Identificar equipamento por QR Code" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/scanner`)} />
       <Button label="Adicionar evidências fotográficas" variant="secondary" onPress={() => router.push(`/inspections/${inspection.id}/evidence`)} />
-      <Button label="Iniciar checklist" onPress={() => { void startInspection(inspection.id).then(() => router.push(`/inspections/${inspection.id}/checklist`)); }} />
+      {startError ? <Text style={styles.checkInError}>{startError}</Text> : null}
+      <Button label="Iniciar checklist" loading={isStarting} onPress={() => void startChecklist()} />
       <Button label="Voltar para inspeções" variant="secondary" onPress={() => router.back()} />
       </View>
     </ScrollView>

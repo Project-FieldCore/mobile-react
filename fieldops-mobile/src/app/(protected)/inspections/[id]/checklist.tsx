@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Card, colors, radius, spacing, typography } from '@/design-system';
+import { Button, Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
 import { getInspectionDraft, hydrateInspectionDraft, saveInspectionAnswers } from '@/features/inspections/draftStore';
 import { NonConformityFields } from '@/features/inspections/NonConformityFields';
 import { getInspectionChecklist, type ChecklistItem, type ChecklistSection } from '@/features/inspections/mockRepository';
@@ -10,6 +10,8 @@ export default function ChecklistScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const savedDraft = getInspectionDraft(id);
   const [sections, setSections] = useState<ChecklistSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>(savedDraft?.answers ?? {});
   const [nonConformityDescription, setNonConformityDescription] = useState(savedDraft?.nonConformityDescription ?? '');
   const [submitted, setSubmitted] = useState(false);
@@ -29,9 +31,18 @@ export default function ChecklistScreen() {
   useEffect(() => {
     if (draftHydrated.current) saveInspectionAnswers(id, answers, nonConformityDescription);
   }, [answers, id, nonConformityDescription]);
-  useEffect(() => {
-    void getInspectionChecklist(id).then((checklist) => setSections(checklist ?? []));
+  const loadChecklist = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
+    void getInspectionChecklist(id)
+      .then((checklist) => setSections(checklist ?? []))
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
   }, [id]);
+  useEffect(() => {
+    const timer = setTimeout(loadChecklist, 0);
+    return () => clearTimeout(timer);
+  }, [loadChecklist]);
   const items = sections.flatMap((section) => section.items);
   const required = items.filter((item) => item.required);
   const hasNonConformity = answers.visual === 'Não conforme';
@@ -50,6 +61,9 @@ export default function ChecklistScreen() {
       router.push({ pathname: '/inspections/[id]/summary', params: { id } });
     });
   };
+  if (loading) return <LoadingState title="Carregando checklist..." />;
+  if (loadError) return <ErrorState title="Não foi possível carregar o checklist" description="Verifique sua conexão e tente novamente." onRetry={loadChecklist} />;
+  if (!sections.length) return <EmptyState title="Checklist indisponível" description="Esta inspeção ainda não possui itens para preenchimento." />;
   return <View style={styles.container}><View style={styles.header}><Text style={styles.title}>Checklist</Text><Text style={styles.progressText}>{completed}/{required.length} obrigatórios respondidos{pending.length ? ` · Pendentes: ${pending.map((item) => item.label).join(', ')}` : ''}</Text><View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View></View><ScrollView contentContainerStyle={styles.content}>{sections.map((section) => <View key={section.title} style={styles.section}><Text style={styles.sectionTitle}>{section.title}</Text>{section.items.map((item) => <Card key={item.id} style={styles.card}><Text style={styles.label}>{item.label}{item.required ? <Text style={styles.required}> *</Text> : null}</Text><Input item={item} value={answers[item.id]} onChange={(value) => change(item.id, value)} /><Button label="Adicionar foto" variant="secondary" onPress={() => router.push({ pathname: '/inspections/[id]/evidence', params: { id, itemId: item.id } })} />{item.type === 'conformity' && answers[item.id] === 'Não conforme' ? <NonConformityFields inspectionId={id} itemId={item.id} description={nonConformityDescription} onDescription={setNonConformityDescription} showError={submitted && requiresDescription} /> : null}{submitted && item.required && !answers[item.id] ? <Text style={styles.error}>Este item é obrigatório.</Text> : null}</Card>)}</View>)}<Button label="Concluir checklist" onPress={finish} /><Button label="Voltar" variant="secondary" onPress={() => router.back()} /></ScrollView></View>;
 }
 function Input({ item, value, onChange }: { item: ChecklistItem; value?: string; onChange: (value: string) => void }) { if (['text', 'long', 'number', 'date'].includes(item.type)) return <TextInput value={value} onChangeText={onChange} placeholder={item.type === 'date' ? 'DD/MM/AAAA' : 'Digite sua resposta'} keyboardType={item.type === 'number' ? 'numeric' : 'default'} multiline={item.type === 'long' || item.id === 'notes'} style={[styles.input, (item.type === 'long' || item.id === 'notes') && styles.area]} placeholderTextColor={colors.textMuted} />; const options = item.type === 'boolean' ? ['Sim', 'Não'] : item.type === 'conformity' ? ['Conforme', 'Não conforme', 'Não aplicável'] : item.options ?? []; return <View style={styles.options}>{options.map((option) => <Pressable key={option} onPress={() => onChange(option)} style={[styles.option, value === option && styles.selected]}><Text style={[styles.optionText, value === option && styles.selectedText]}>{option}</Text></Pressable>)}</View>; }
