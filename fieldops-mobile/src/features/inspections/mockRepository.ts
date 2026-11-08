@@ -5,6 +5,7 @@
 import { captureDeviceLocation } from './deviceLocation';
 import { enqueueInspectionForSync, getInspectionDraft, saveInspectionLocation } from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
+import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
@@ -174,8 +175,11 @@ export async function getInspection(id: string): Promise<Inspection | null> {
       const inspection = await fetchInspection(id);
       if (inspection) await saveDownloadedInspection(inspection);
       return inspection;
-    } catch {
-      return (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null;
+    } catch (error) {
+      const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null;
+      if (cached) return cached;
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
     }
   }
   await wait(200);
@@ -188,8 +192,10 @@ export async function getInspectionChecklist(id: string): Promise<ChecklistSecti
       const checklist = await fetchChecklist(id);
       await saveDownloadedChecklist(id, checklist);
       return checklist;
-    } catch {
-      return readDownloadedChecklist(id);
+    } catch (error) {
+      const cached = await readDownloadedChecklist(id);
+      if (cached) return cached;
+      throw error;
     }
   }
   const inspection = await getInspection(id);

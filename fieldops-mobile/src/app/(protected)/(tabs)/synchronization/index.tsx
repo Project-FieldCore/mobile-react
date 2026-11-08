@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, colors, spacing, typography } from '@/design-system';
+import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import { getPendingSyncCount } from '@/features/inspections/mockRepository';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
 
@@ -14,18 +14,34 @@ export default function SynchronizationScreen() {
   const [operations, setOperations] = useState<PendingOperation[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState(false);
-  const loadPending = useCallback(async () => { const next = await getPendingOperations(); setOperations(next); setPending(next.length); }, []);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const loadPending = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const next = await getPendingOperations();
+      setOperations(next);
+      setPending(next.length);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
   const statusCount = (status: PendingOperation['status']) => operations.filter((operation) => operation.status === status).length;
   const sync = async () => { setSyncing(true); await new Promise((resolve) => setTimeout(resolve, 350)); setSyncNotice(true); setSyncing(false); };
   const retryFailed = async () => { setSyncing(true); await retryFailedOperations(); await loadPending(); setSyncing(false); };
   const simulate = async (status: 'FAILED' | 'CONFLICT') => { setSyncing(true); await simulateSyncOutcome(status); await loadPending(); setSyncing(false); };
   useFocusEffect(useCallback(() => { void loadPending(); }, [loadPending]));
+  if (loading) return <LoadingState title="Carregando fila de sincronização..." />;
+  if (loadError) return <ErrorState title="Não foi possível carregar a fila" description="Os dados permanecem seguros neste dispositivo." onRetry={() => void loadPending()} />;
   return (
     <View style={styles.container}>
       <LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}><Text style={styles.title}>Sincronização</Text><Text style={styles.subtitle}>Acompanhe os dados salvos no dispositivo.</Text></LinearGradient>
       <Card style={styles.card}><Text style={styles.countValue}>{pending}</Text><Text style={styles.label}>{pending === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}</Text></Card>
       <Card style={styles.card}><Text style={styles.label}>Estado da sincronização</Text><Text style={styles.lastSync}>Aguardando conexão com o servidor</Text></Card>
-      <Card style={styles.card}><Text style={styles.label}>Detalhamento da fila</Text><Text style={styles.value}>Pendentes: {statusCount('PENDING')}</Text><Text style={styles.value}>Enviando: {statusCount('SYNCING')}</Text><Text style={styles.value}>Falhas: {statusCount('FAILED')}</Text><Text style={styles.value}>Conflitos: {statusCount('CONFLICT')}</Text>{operations.map((operation) => <Text key={operation.id} style={styles.value}>{operation.operationType ?? 'ALTERACAO'} · {new Date(operation.createdAt).toLocaleString('pt-BR')}</Text>)}</Card>
+      {operations.length === 0 ? <EmptyState title="Nenhuma alteração pendente" description="As alterações locais aparecerão aqui antes de serem enviadas." /> : <Card style={styles.card}><Text style={styles.label}>Detalhamento da fila</Text><Text style={styles.value}>Pendentes: {statusCount('PENDING')}</Text><Text style={styles.value}>Enviando: {statusCount('SYNCING')}</Text><Text style={styles.value}>Falhas: {statusCount('FAILED')}</Text><Text style={styles.value}>Conflitos: {statusCount('CONFLICT')}</Text>{operations.map((operation) => <Text key={operation.id} style={styles.value}>{operation.operationType ?? 'ALTERACAO'} · {new Date(operation.createdAt).toLocaleString('pt-BR')}</Text>)}</Card>}
       <Button label="Sincronizar agora" onPress={() => void sync()} loading={syncing} disabled={pending === 0} />
       {statusCount('FAILED') > 0 ? <Button label="Tentar novamente as falhas" variant="secondary" onPress={() => void retryFailed()} loading={syncing} /> : null}
       {__DEV__ ? <View style={styles.developmentActions}><Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text><Button label="Simular falha de envio" variant="secondary" onPress={() => void simulate('FAILED')} disabled={pending === 0} /><Button label="Simular conflito" variant="secondary" onPress={() => void simulate('CONFLICT')} disabled={pending === 0} /></View> : null}
