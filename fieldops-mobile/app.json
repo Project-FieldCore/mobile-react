@@ -44,6 +44,12 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "94ab1ae1-9e41-46c0-aa60-e37df0184bd6"
+      }
+    },
+    "owner": "juliananascimento"
   }
 }
