@@ -1,0 +1,70 @@
+import type { PendingOperation } from './draftStore';
+
+export type BatchSyncResult = {
+  sent: number;
+  failed: number;
+  blocked: number;
+};
+
+export type BatchSyncStorage = {
+  getPendingOperations: () => Promise<PendingOperation[]>;
+  updateSyncOperation: (id: string, status: 'SYNCING' | 'FAILED', lastError?: string) => Promise<void>;
+  removeSyncOperation: (id: string) => Promise<void>;
+};
+
+export type OperationSender = (operation: PendingOperation) => Promise<void>;
+
+const operationOrder: Record<string, number> = {
+  ANSWERS: 1,
+  LOCATION: 2,
+  EVIDENCE: 3,
+  COMPLETE: 4,
+};
+
+function compareOperations(left: PendingOperation, right: PendingOperation): number {
+  if (left.inspectionId === right.inspectionId) {
+    const order = (operationOrder[left.operationType ?? ''] ?? 0) - (operationOrder[right.operationType ?? ''] ?? 0);
+    if (order !== 0) return order;
+  }
+  return left.createdAt.localeCompare(right.createdAt);
+}
+
+export function orderPendingOperations(operations: PendingOperation[]): PendingOperation[] {
+  return operations
+    .filter((operation) => operation.status === 'PENDING')
+    .sort(compareOperations);
+}
+
+/**
+ * Envia a fila preservando a ordem de cada inspeção. Se uma operação falha,
+ * as próximas da mesma inspeção ficam pendentes e as demais inspeções seguem.
+ */
+export async function processPendingOperations(
+  storage: BatchSyncStorage,
+  send: OperationSender,
+): Promise<BatchSyncResult> {
+  const operations = orderPendingOperations(await storage.getPendingOperations());
+  const blockedInspections = new Set<string>();
+  const result: BatchSyncResult = { sent: 0, failed: 0, blocked: 0 };
+
+  for (const operation of operations) {
+    if (blockedInspections.has(operation.inspectionId)) {
+      result.blocked += 1;
+      continue;
+    }
+
+    await storage.updateSyncOperation(operation.id, 'SYNCING');
+    try {
+      await send(operation);
+      await storage.removeSyncOperation(operation.id);
+      result.sent += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível enviar a operação.';
+      await storage.updateSyncOperation(operation.id, 'FAILED', message);
+      blockedInspections.add(operation.inspectionId);
+      result.failed += 1;
+    }
+  }
+
+  return result;
+}
