@@ -210,10 +210,17 @@ O aplicativo distingue e exibe claramente cinco estados de sincronização:
 
 ## 📦 Build
 
+Para gerar o APK de demonstração, entre na pasta do aplicativo e autentique a
+conta Expo autorizada para o projeto:
+
 ```bash
-eas build --platform android --profile preview
+cd fieldops-mobile
+npx eas-cli@27.5.0 login
+npx eas-cli@27.5.0 build --platform android --profile preview
 ```
 
-Perfis de build e configuração de ambientes ficam definidos em `eas.json`.
+O perfil `preview`, definido em `eas.json`, cria um APK para distribuição
+interna. Ao término da build, o EAS informa o link para baixar e instalar o
+arquivo no Android.
 
 ---
