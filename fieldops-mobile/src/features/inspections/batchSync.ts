@@ -1,18 +1,31 @@
-import type { PendingOperation } from './draftStore';
+import type { PendingOperation, SyncOperationStatus } from './draftStore';
 
 export type BatchSyncResult = {
   sent: number;
   failed: number;
   blocked: number;
+  conflicts: number;
+  skipped: number;
 };
 
 export type BatchSyncStorage = {
   getPendingOperations: () => Promise<PendingOperation[]>;
-  updateSyncOperation: (id: string, status: 'SYNCING' | 'FAILED', lastError?: string) => Promise<void>;
+  updateSyncOperation: (
+    id: string,
+    status: SyncOperationStatus,
+    lastError?: string,
+    bumpAttempts?: boolean,
+  ) => Promise<void>;
   removeSyncOperation: (id: string) => Promise<void>;
 };
 
-export type OperationSender = (operation: PendingOperation) => Promise<void>;
+export type SendOutcome =
+  | { kind: 'applied' }
+  | { kind: 'conflict'; message?: string }
+  | { kind: 'failed'; message: string }
+  | { kind: 'skipped' };
+
+export type OperationSender = (operation: PendingOperation) => Promise<void | SendOutcome>;
 
 const operationOrder: Record<string, number> = {
   ANSWERS: 1,
@@ -35,6 +48,10 @@ export function orderPendingOperations(operations: PendingOperation[]): PendingO
     .sort(compareOperations);
 }
 
+function normalizeOutcome(result: void | SendOutcome): SendOutcome {
+  return result ?? { kind: 'applied' };
+}
+
 /**
  * Envia a fila preservando a ordem de cada inspeção. Se uma operação falha,
  * as próximas da mesma inspeção ficam pendentes e as demais inspeções seguem.
@@ -45,7 +62,7 @@ export async function processPendingOperations(
 ): Promise<BatchSyncResult> {
   const operations = orderPendingOperations(await storage.getPendingOperations());
   const blockedInspections = new Set<string>();
-  const result: BatchSyncResult = { sent: 0, failed: 0, blocked: 0 };
+  const result: BatchSyncResult = { sent: 0, failed: 0, blocked: 0, conflicts: 0, skipped: 0 };
 
   for (const operation of operations) {
     if (blockedInspections.has(operation.inspectionId)) {
@@ -53,11 +70,32 @@ export async function processPendingOperations(
       continue;
     }
 
-    await storage.updateSyncOperation(operation.id, 'SYNCING');
+    await storage.updateSyncOperation(operation.id, 'SYNCING', undefined, false);
     try {
-      await send(operation);
-      await storage.removeSyncOperation(operation.id);
-      result.sent += 1;
+      const outcome = normalizeOutcome(await send(operation));
+      if (outcome.kind === 'applied') {
+        await storage.removeSyncOperation(operation.id);
+        result.sent += 1;
+        continue;
+      }
+      if (outcome.kind === 'skipped') {
+        await storage.updateSyncOperation(operation.id, 'PENDING', undefined, false);
+        result.skipped += 1;
+        continue;
+      }
+      if (outcome.kind === 'conflict') {
+        await storage.updateSyncOperation(
+          operation.id,
+          'CONFLICT',
+          outcome.message ?? 'A versão local diverge da versão no servidor.',
+        );
+        blockedInspections.add(operation.inspectionId);
+        result.conflicts += 1;
+        continue;
+      }
+      await storage.updateSyncOperation(operation.id, 'FAILED', outcome.message);
+      blockedInspections.add(operation.inspectionId);
+      result.failed += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível enviar a operação.';
       await storage.updateSyncOperation(operation.id, 'FAILED', message);
