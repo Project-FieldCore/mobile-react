@@ -1,0 +1,232 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FieldOps mobile sync push (excerpt)",
+    "version": "1"
+  },
+  "paths": {
+    "/api/v1/mobile/sync/push": {
+      "post": {
+        "summary": "Push a batch of offline operations",
+        "operationId": "pushMobileSync",
+        "tags": [
+          "Mobile sync"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MobileSyncPushRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-operation results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileSyncPushResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ValidationError"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MobileSyncStatus": {
+        "type": "string",
+        "enum": [
+          "APPLIED",
+          "ALREADY_APPLIED",
+          "REJECTED",
+          "CONFLICT",
+          "DEPENDENCY_FAILED"
+        ]
+      },
+      "MobileSyncPushRequest": {
+        "type": "object",
+        "required": [
+          "deviceId",
+          "operations"
+        ],
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastPullCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MobileSyncOperation"
+            }
+          }
+        }
+      },
+      "MobileSyncOperation": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "entityType",
+          "entityId",
+          "operationType"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operationType": {
+            "type": "string"
+          },
+          "dependencyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "baseVersion": {
+            "type": "integer",
+            "nullable": true
+          },
+          "payload": {
+            "$ref": "#/components/schemas/InspectionResponsePayload"
+          }
+        }
+      },
+      "InspectionResponsePayload": {
+        "type": "object",
+        "properties": {
+          "inspectionItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "valueText": {
+            "type": "string"
+          },
+          "valueNumber": {
+            "type": "number"
+          },
+          "valueBoolean": {
+            "type": "boolean"
+          },
+          "valueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "conformity": {
+            "type": "string",
+            "enum": [
+              "NOT_APPLICABLE",
+              "CONFORMING",
+              "NON_CONFORMING"
+            ]
+          },
+          "observation": {
+            "type": "string"
+          }
+        }
+      },
+      "MobileSyncPushResponse": {
+        "type": "object",
+        "required": [
+          "results",
+          "serverTime"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MobileSyncOperationResult"
+            }
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MobileSyncOperationResult": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "status"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MobileSyncStatus"
+          },
+          "entityVersion": {
+            "type": "integer",
+            "nullable": true
+          },
+          "server": {
+            "$ref": "#/components/schemas/MobileSyncServerResponse"
+          }
+        }
+      },
+      "MobileSyncServerResponse": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "valueText": {
+            "type": "string",
+            "nullable": true
+          },
+          "valueNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "valueBoolean": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "valueDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "conformity": {
+            "type": "string",
+            "nullable": true
+          },
+          "observation": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}

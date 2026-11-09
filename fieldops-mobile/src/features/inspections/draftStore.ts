@@ -1,6 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 import { canRetry } from './syncQueue';
+import { mapAnswerValue } from './syncPushMapper';
+import { createUuid, isUuid } from './uuid';
 
 export type InspectionDraft = {
   answers: Record<string, string>;
@@ -8,6 +10,7 @@ export type InspectionDraft = {
   evidence: LocalEvidence[];
   location?: InspectionLocation;
   equipmentCode?: string;
+  baseVersion?: number;
 };
 
 export type EvidenceUploadStatus = 'UPLOADED' | 'PENDING';
@@ -61,6 +64,10 @@ function writeWebDrafts(value: Record<string, InspectionDraft>) {
   if (typeof localStorage !== 'undefined') localStorage.setItem(webDraftsKey, JSON.stringify(value));
 }
 
+async function writeWebOutbox(operations: PendingOperation[]) {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify(operations));
+}
+
 export function saveInspectionDraft(id: string, draft: InspectionDraft) {
   drafts.set(id, draft);
   queueInspectionDraftPersistence(id, draft);
@@ -74,16 +81,20 @@ export function saveInspectionAnswers(
   id: string,
   answers: Record<string, string>,
   nonConformityDescription: string,
+  baseVersion?: number,
 ): Promise<void> {
   const draft = drafts.get(id) ?? { answers: {}, evidence: [] };
   const next = {
     ...draft,
     answers,
     nonConformityDescription: nonConformityDescription || undefined,
+    baseVersion: baseVersion ?? draft.baseVersion,
   };
   drafts.set(id, next);
   const persisted = queueInspectionDraftPersistence(id, next);
-  void persisted.then(() => enqueueChange(id, 'ANSWERS', { answers, nonConformityDescription })).catch(() => undefined);
+  void persisted
+    .then(() => enqueueAnswerOperations(id, answers, nonConformityDescription, next.baseVersion ?? 0))
+    .catch(() => undefined);
   return persisted;
 }
 
@@ -178,10 +189,66 @@ export async function enqueueInspectionForSync(inspectionId: string) {
   await enqueueChange(inspectionId, 'COMPLETE', { inspectionId });
 }
 
+/** Uma linha de outbox por item — alinhado a INSPECTION_RESPONSE no sync push. */
+export async function enqueueAnswerOperations(
+  inspectionId: string,
+  answers: Record<string, string>,
+  nonConformityDescription: string,
+  baseVersion = 0,
+): Promise<void> {
+  const pending = await getPendingOperations();
+  const existingByItem = new Map<string, PendingOperation>();
+  for (const operation of pending) {
+    if (operation.inspectionId !== inspectionId || operation.operationType !== 'ANSWERS') continue;
+    try {
+      const payload = JSON.parse(operation.payload ?? '{}') as { inspectionItemId?: string };
+      if (payload.inspectionItemId) existingByItem.set(payload.inspectionItemId, operation);
+    } catch {
+      /* ignore malformed */
+    }
+  }
+
+  for (const [itemId, value] of Object.entries(answers)) {
+    if (!value) continue;
+    const fields = mapAnswerValue(value);
+    const observation = fields.conformity === 'NON_CONFORMING'
+      ? (nonConformityDescription || undefined)
+      : undefined;
+    const existing = existingByItem.get(itemId);
+    if (existing) {
+      let previous: { entityId?: string; baseVersion?: number } = {};
+      try {
+        previous = JSON.parse(existing.payload ?? '{}') as { entityId?: string; baseVersion?: number };
+      } catch {
+        previous = {};
+      }
+      await replaceSyncOperationPayload(existing.id, {
+        entityId: previous.entityId && isUuid(previous.entityId) ? previous.entityId : createUuid(),
+        inspectionItemId: itemId,
+        baseVersion: previous.baseVersion ?? baseVersion,
+        ...fields,
+        observation,
+      });
+      if (existing.status === 'FAILED' || existing.status === 'CONFLICT') {
+        await updateSyncOperation(existing.id, 'PENDING', undefined, false);
+      }
+      continue;
+    }
+
+    await enqueueChange(inspectionId, 'ANSWERS', {
+      entityId: createUuid(),
+      inspectionItemId: itemId,
+      baseVersion,
+      ...fields,
+      observation,
+    });
+  }
+}
+
 export async function enqueueChange(inspectionId: string, operationType: string, payload: unknown): Promise<void> {
   const createdAt = new Date().toISOString();
   const operation: PendingOperation = {
-    id: `${inspectionId}:${operationType}:${createdAt}`,
+    id: createUuid(),
     inspectionId,
     createdAt,
     status: 'PENDING',
@@ -189,15 +256,19 @@ export async function enqueueChange(inspectionId: string, operationType: string,
     operationType,
     payload: JSON.stringify(payload),
   };
+  await enqueueRawSyncOperation(operation);
+}
+
+export async function enqueueRawSyncOperation(operation: PendingOperation): Promise<void> {
   if (Platform.OS === 'web') {
     const current = await getPendingOperations();
-    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify([...current, operation]));
+    await writeWebOutbox([...current, operation]);
     return;
   }
   const database = await getDatabase();
   await database.runAsync(
     'INSERT INTO sync_operations (id, inspection_id, created_at, status, attempts, last_error, operation_type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    operation.id, operation.inspectionId, operation.createdAt, operation.status, operation.attempts, null, operation.operationType ?? null, operation.payload ?? null,
+    operation.id, operation.inspectionId, operation.createdAt, operation.status, operation.attempts, operation.lastError ?? null, operation.operationType ?? null, operation.payload ?? null,
   );
 }
 
@@ -213,20 +284,64 @@ export async function getPendingOperations(): Promise<PendingOperation[]> {
   return database.getAllAsync<PendingOperation>('SELECT id, inspection_id AS inspectionId, created_at AS createdAt, status, attempts, last_error AS lastError, operation_type AS operationType, payload FROM sync_operations ORDER BY created_at ASC');
 }
 
-export async function updateSyncOperation(id: string, status: SyncOperationStatus, lastError?: string): Promise<void> {
+export async function updateSyncOperation(
+  id: string,
+  status: SyncOperationStatus,
+  lastError?: string,
+  bumpAttempts = true,
+): Promise<void> {
   if (Platform.OS === 'web') {
-    const next = (await getPendingOperations()).map((operation) => operation.id === id ? { ...operation, status, attempts: operation.attempts + 1, lastError } : operation);
-    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify(next));
+    const next = (await getPendingOperations()).map((operation) => {
+      if (operation.id !== id) return operation;
+      return {
+        ...operation,
+        status,
+        attempts: bumpAttempts ? operation.attempts + 1 : operation.attempts,
+        lastError,
+      };
+    });
+    await writeWebOutbox(next);
     return;
   }
   const database = await getDatabase();
-  await database.runAsync('UPDATE sync_operations SET status = ?, attempts = attempts + 1, last_error = ? WHERE id = ?', status, lastError ?? null, id);
+  if (bumpAttempts) {
+    await database.runAsync('UPDATE sync_operations SET status = ?, attempts = attempts + 1, last_error = ? WHERE id = ?', status, lastError ?? null, id);
+    return;
+  }
+  await database.runAsync('UPDATE sync_operations SET status = ?, last_error = ? WHERE id = ?', status, lastError ?? null, id);
+}
+
+export async function replaceSyncOperationPayload(id: string, payload: unknown): Promise<void> {
+  const serialized = JSON.stringify(payload);
+  if (Platform.OS === 'web') {
+    const next = (await getPendingOperations()).map((operation) => (
+      operation.id === id ? { ...operation, payload: serialized } : operation
+    ));
+    await writeWebOutbox(next);
+    return;
+  }
+  const database = await getDatabase();
+  await database.runAsync('UPDATE sync_operations SET payload = ? WHERE id = ?', serialized, id);
+}
+
+export async function rekeySyncOperation(oldId: string, newId: string): Promise<PendingOperation | null> {
+  const operations = await getPendingOperations();
+  const current = operations.find((operation) => operation.id === oldId);
+  if (!current) return null;
+  const nextOperation = { ...current, id: newId };
+  if (Platform.OS === 'web') {
+    await writeWebOutbox(operations.map((operation) => (operation.id === oldId ? nextOperation : operation)));
+    return nextOperation;
+  }
+  const database = await getDatabase();
+  await database.runAsync('UPDATE sync_operations SET id = ? WHERE id = ?', newId, oldId);
+  return nextOperation;
 }
 
 export async function removeSyncOperation(id: string): Promise<void> {
   if (Platform.OS === 'web') {
     const next = (await getPendingOperations()).filter((operation) => operation.id !== id);
-    if (typeof localStorage !== 'undefined') localStorage.setItem(webOutboxKey, JSON.stringify(next));
+    await writeWebOutbox(next);
     return;
   }
   const database = await getDatabase();
@@ -235,7 +350,7 @@ export async function removeSyncOperation(id: string): Promise<void> {
 
 export async function retryFailedOperations(): Promise<number> {
   const failed = (await getPendingOperations()).filter((operation) => canRetry(operation.status));
-  await Promise.all(failed.map((operation) => updateSyncOperation(operation.id, 'PENDING')));
+  await Promise.all(failed.map((operation) => updateSyncOperation(operation.id, 'PENDING', undefined, false)));
   return failed.length;
 }
 

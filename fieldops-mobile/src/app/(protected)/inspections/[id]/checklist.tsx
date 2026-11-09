@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
 import { getInspectionDraft, hydrateInspectionDraft, saveInspectionAnswers } from '@/features/inspections/draftStore';
 import { NonConformityFields } from '@/features/inspections/NonConformityFields';
-import { getInspectionChecklist, type ChecklistItem, type ChecklistSection } from '@/features/inspections/mockRepository';
+import { getInspection, getInspectionChecklist, type ChecklistItem, type ChecklistSection } from '@/features/inspections/mockRepository';
 
 export default function ChecklistScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,6 +14,7 @@ export default function ChecklistScreen() {
   const [loadError, setLoadError] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>(savedDraft?.answers ?? {});
   const [nonConformityDescription, setNonConformityDescription] = useState(savedDraft?.nonConformityDescription ?? '');
+  const [baseVersion, setBaseVersion] = useState(savedDraft?.baseVersion ?? 0);
   const [submitted, setSubmitted] = useState(false);
   const draftHydrated = useRef(false);
 
@@ -29,13 +30,16 @@ export default function ChecklistScreen() {
     });
   }, [id]);
   useEffect(() => {
-    if (draftHydrated.current) saveInspectionAnswers(id, answers, nonConformityDescription);
-  }, [answers, id, nonConformityDescription]);
+    if (draftHydrated.current) saveInspectionAnswers(id, answers, nonConformityDescription, baseVersion);
+  }, [answers, baseVersion, id, nonConformityDescription]);
   const loadChecklist = useCallback(() => {
     setLoading(true);
     setLoadError(false);
-    void getInspectionChecklist(id)
-      .then((checklist) => setSections(checklist ?? []))
+    void Promise.all([getInspectionChecklist(id), getInspection(id)])
+      .then(([checklist, inspection]) => {
+        setSections(checklist ?? []);
+        if (typeof inspection?.version === 'number') setBaseVersion(inspection.version);
+      })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [id]);
@@ -52,12 +56,12 @@ export default function ChecklistScreen() {
   const progress = required.length ? Math.round((completed / required.length) * 100) : 0;
   const change = (fieldId: string, value: string) => setAnswers((current) => {
     const nextAnswers = { ...current, [fieldId]: value };
-    saveInspectionAnswers(id, nextAnswers, nonConformityDescription);
+    saveInspectionAnswers(id, nextAnswers, nonConformityDescription, baseVersion);
     return nextAnswers;
   });
   const finish = () => {
     if (pending.length || requiresDescription) { setSubmitted(true); return; }
-    void saveInspectionAnswers(id, answers, hasNonConformity ? nonConformityDescription.trim() : '').then(() => {
+    void saveInspectionAnswers(id, answers, hasNonConformity ? nonConformityDescription.trim() : '', baseVersion).then(() => {
       router.push({ pathname: '/inspections/[id]/summary', params: { id } });
     });
   };
