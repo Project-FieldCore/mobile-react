@@ -1,0 +1,74 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FieldOps mobile sync pull (excerpt)",
+    "version": "1"
+  },
+  "paths": {
+    "/api/v1/mobile/sync/pull": {
+      "get": {
+        "summary": "Pull offline changes by opaque cursor",
+        "operationId": "pullMobileSync",
+        "tags": ["Mobile sync"],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Opaque pull cursor. Omit or empty for bootstrap."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Change page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MobileSyncPullResponse" }
+              }
+            }
+          },
+          "400": { "description": "ValidationError" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MobileSyncPullResponse": {
+        "type": "object",
+        "required": ["changes", "nextCursor", "serverTime", "hasMore"],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/MobileSyncChange" }
+          },
+          "nextCursor": { "type": "string" },
+          "serverTime": { "type": "string", "format": "date-time" },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "MobileSyncChange": {
+        "type": "object",
+        "required": ["entityType", "entityId", "operation", "updatedAt"],
+        "properties": {
+          "entityType": { "type": "string", "enum": ["INSPECTION", "INSPECTION_RESPONSE"] },
+          "entityId": { "type": "string", "format": "uuid" },
+          "operation": { "type": "string", "enum": ["UPSERT", "DELETE"] },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "payload": { "nullable": true }
+        }
+      },
+      "MobileSyncInspectionPayload": {
+        "type": "object",
+        "required": ["id", "title", "priority", "status", "version", "updatedAt", "items"]
+      },
+      "MobileSyncResponsePayload": {
+        "type": "object",
+        "required": ["id", "inspectionId", "inspectionItemId", "version", "updatedAt"]
+      }
+    }
+  }
+}

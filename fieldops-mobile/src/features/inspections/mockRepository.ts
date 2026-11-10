@@ -9,7 +9,7 @@ import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export type InspectionStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'PENDING_SYNC';
+export type InspectionStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'PENDING_SYNC' | 'CANCELED';
 export type InspectionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type ChecklistItem = {
@@ -85,7 +85,7 @@ async function downloadedDatabase() {
   return database;
 }
 
-async function saveDownloadedInspection(inspection: Inspection): Promise<void> {
+export async function saveDownloadedInspection(inspection: Inspection): Promise<void> {
   if (Platform.OS === 'web') {
     const current = readWebJson<Record<string, Inspection>>(webDownloadKey) ?? {};
     current[inspection.id] = inspection;
@@ -96,14 +96,29 @@ async function saveDownloadedInspection(inspection: Inspection): Promise<void> {
   await database.runAsync('INSERT OR REPLACE INTO downloaded_inspections (id, content) VALUES (?, ?)', inspection.id, JSON.stringify(inspection));
 }
 
-async function readDownloadedInspections(): Promise<Inspection[]> {
+export async function readDownloadedInspections(): Promise<Inspection[]> {
   if (Platform.OS === 'web') return Object.values(readWebJson<Record<string, Inspection>>(webDownloadKey) ?? {});
   const database = await downloadedDatabase();
   const rows = await database.getAllAsync<{ content: string }>('SELECT content FROM downloaded_inspections');
   return rows.map((row) => JSON.parse(row.content) as Inspection);
 }
 
-async function saveDownloadedChecklist(id: string, checklist: ChecklistSection[]): Promise<void> {
+export async function deleteDownloadedInspection(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const inspectionsById = readWebJson<Record<string, Inspection>>(webDownloadKey) ?? {};
+    delete inspectionsById[id];
+    localStorage.setItem(webDownloadKey, JSON.stringify(inspectionsById));
+    const checklists = readWebJson<Record<string, ChecklistSection[]>>(webChecklistKey) ?? {};
+    delete checklists[id];
+    localStorage.setItem(webChecklistKey, JSON.stringify(checklists));
+    return;
+  }
+  const database = await downloadedDatabase();
+  await database.runAsync('DELETE FROM downloaded_inspections WHERE id = ?', id);
+  await database.runAsync('DELETE FROM downloaded_checklists WHERE inspection_id = ?', id);
+}
+
+export async function saveDownloadedChecklist(id: string, checklist: ChecklistSection[]): Promise<void> {
   if (Platform.OS === 'web') {
     const current = readWebJson<Record<string, ChecklistSection[]>>(webChecklistKey) ?? {};
     current[id] = checklist;
@@ -114,7 +129,7 @@ async function saveDownloadedChecklist(id: string, checklist: ChecklistSection[]
   await database.runAsync('INSERT OR REPLACE INTO downloaded_checklists (inspection_id, content) VALUES (?, ?)', id, JSON.stringify(checklist));
 }
 
-async function readDownloadedChecklist(id: string): Promise<ChecklistSection[] | null> {
+export async function readDownloadedChecklist(id: string): Promise<ChecklistSection[] | null> {
   if (Platform.OS === 'web') return readWebJson<Record<string, ChecklistSection[]>>(webChecklistKey)?.[id] ?? null;
   const database = await downloadedDatabase();
   const row = await database.getFirstAsync<{ content: string }>('SELECT content FROM downloaded_checklists WHERE inspection_id = ?', id);
