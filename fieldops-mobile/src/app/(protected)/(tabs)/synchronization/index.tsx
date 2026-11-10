@@ -1,34 +1,43 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
-import { getPendingSyncCount } from '@/features/inspections/mockRepository';
+import { useAuthStore } from '@/features/auth/store';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
 import { getLastPullServerTime, getLastSyncAt } from '@/features/inspections/syncCursorStore';
 import { runMobileSync } from '@/features/inspections/runMobileSync';
-
-function formatSyncInstant(iso: string | null): string {
-  if (!iso) return 'Ainda não sincronizado';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('pt-BR');
-}
+import {
+  composeSyncFailureBanner,
+  composeSyncSuccessBanner,
+  countByStatus,
+  formatSyncInstant,
+  humanizeSyncError,
+  operationStatusColor,
+  operationStatusLabel,
+  operationTypeLabel,
+  SYNC_WARNING_COLOR,
+  type SyncBannerModel,
+} from '@/features/inspections/syncStatusUi';
 
 export default function SynchronizationScreen() {
-  const [pending, setPending] = useState(getPendingSyncCount());
+  const params = useLocalSearchParams<{ sync?: string }>();
+  const signOut = useAuthStore((state) => state.signOut);
+  const autoSyncConsumed = useRef(false);
+
   const [operations, setOperations] = useState<PendingOperation[]>([]);
   const [syncing, setSyncing] = useState(false);
-  const [syncNotice, setSyncNotice] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState(false);
+  const [banner, setBanner] = useState<SyncBannerModel | null>(null);
   const [lastSyncLabel, setLastSyncLabel] = useState('Ainda não sincronizado');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const loadPending = useCallback(async () => {
-    setLoading(true);
-    setLoadError(false);
+  const loadPending = useCallback(async (options?: { quiet?: boolean }) => {
+    if (!options?.quiet) {
+      setLoading(true);
+      setLoadError(false);
+    }
     try {
       const [next, syncedAt, serverTime] = await Promise.all([
         getPendingOperations(),
@@ -36,56 +45,71 @@ export default function SynchronizationScreen() {
         getLastPullServerTime(),
       ]);
       setOperations(next);
-      setPending(next.length);
       setLastSyncLabel(formatSyncInstant(syncedAt ?? serverTime));
     } catch {
-      setLoadError(true);
+      if (!options?.quiet) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (!options?.quiet) setLoading(false);
     }
   }, []);
 
-  const statusCount = (status: PendingOperation['status']) => operations.filter((operation) => operation.status === status).length;
+  const counts = countByStatus(operations);
 
-  const sync = async () => {
+  const sync = useCallback(async () => {
     setSyncing(true);
-    setSyncNotice(null);
-    setSyncError(false);
+    setBanner({ kind: 'syncing', message: 'Sincronizando…' });
     try {
       const result = await runMobileSync();
-      await loadPending();
-      const pushParts = [
-        result.push.sent ? `${result.push.sent} enviada(s)` : null,
-        result.push.conflicts ? `${result.push.conflicts} conflito(s)` : null,
-        result.push.failed ? `${result.push.failed} falha(s) no envio` : null,
-      ].filter(Boolean);
-      const pullParts = [
-        result.pull.applied.upsertedInspections ? `${result.pull.applied.upsertedInspections} inspeção(ões)` : null,
-        result.pull.applied.upsertedResponses ? `${result.pull.applied.upsertedResponses} resposta(s)` : null,
-        result.pull.applied.deletedInspections ? `${result.pull.applied.deletedInspections} remoção(ões)` : null,
-      ].filter(Boolean);
-      const quietPull = result.pull.changes === 0;
-      setSyncNotice([
-        pushParts.length ? `Envio: ${pushParts.join(', ')}` : 'Envio: nada pendente',
-        quietPull ? 'Pull: sem mudanças novas' : `Pull: ${pullParts.join(', ') || `${result.pull.changes} mudança(s)`}`,
-        result.pull.serverTime ? `Servidor: ${formatSyncInstant(result.pull.serverTime)}` : null,
-      ].filter(Boolean).join(' · '));
+      await loadPending({ quiet: true });
+      setBanner(composeSyncSuccessBanner(result));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível sincronizar agora.';
-      setSyncError(true);
-      setSyncNotice(message);
-      await loadPending();
+      setBanner(composeSyncFailureBanner(error));
+      await loadPending({ quiet: true });
     } finally {
       setSyncing(false);
     }
+  }, [loadPending]);
+
+  const retryFailed = async () => {
+    await retryFailedOperations();
+    await sync();
   };
 
-  const retryFailed = async () => { setSyncing(true); await retryFailedOperations(); await loadPending(); setSyncing(false); };
-  const simulate = async (status: 'FAILED' | 'CONFLICT') => { setSyncing(true); await simulateSyncOutcome(status); await loadPending(); setSyncing(false); };
-  useFocusEffect(useCallback(() => { void loadPending(); }, [loadPending]));
+  const simulate = async (status: 'FAILED' | 'CONFLICT') => {
+    setSyncing(true);
+    await simulateSyncOutcome(status);
+    await loadPending({ quiet: true });
+    setSyncing(false);
+  };
+
+  useFocusEffect(useCallback(() => {
+    void loadPending().then(() => {
+      if (params.sync === '1' && !autoSyncConsumed.current) {
+        autoSyncConsumed.current = true;
+        router.setParams({ sync: undefined });
+        void sync();
+      }
+    });
+  }, [loadPending, params.sync, sync]));
 
   if (loading) return <LoadingState title="Carregando fila de sincronização..." />;
-  if (loadError) return <ErrorState title="Não foi possível carregar a fila" description="Os dados permanecem seguros neste dispositivo." onRetry={() => void loadPending()} />;
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Não foi possível carregar a fila"
+        description="Os dados permanecem seguros neste dispositivo."
+        onRetry={() => void loadPending()}
+      />
+    );
+  }
+
+  const bannerStyle = banner?.kind === 'success'
+    ? styles.success
+    : banner?.kind === 'partial'
+      ? styles.partial
+      : banner?.kind === 'syncing'
+        ? styles.value
+        : styles.error;
 
   return (
     <View style={styles.container}>
@@ -93,44 +117,111 @@ export default function SynchronizationScreen() {
         <Text style={styles.title}>Sincronização</Text>
         <Text style={styles.subtitle}>Envio da outbox e download incremental por cursor.</Text>
       </LinearGradient>
-      <Card style={styles.card}>
-        <Text style={styles.countValue}>{pending}</Text>
-        <Text style={styles.label}>{pending === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}</Text>
-      </Card>
-      <Card style={styles.card}>
-        <Text style={styles.label}>Última sincronização</Text>
-        <Text style={styles.lastSync}>{lastSyncLabel}</Text>
-        <Text style={styles.value}>{syncNotice ?? 'Toque em sincronizar para enviar e baixar mudanças.'}</Text>
-      </Card>
-      {operations.length === 0 ? (
-        <EmptyState title="Nenhuma alteração pendente de envio" description="Você ainda pode sincronizar para baixar inspeções e respostas do servidor." />
-      ) : (
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Card style={styles.card}>
-          <Text style={styles.label}>Detalhamento da fila</Text>
-          <Text style={styles.value}>Pendentes: {statusCount('PENDING')}</Text>
-          <Text style={styles.value}>Enviando: {statusCount('SYNCING')}</Text>
-          <Text style={styles.value}>Falhas: {statusCount('FAILED')}</Text>
-          <Text style={styles.value}>Conflitos: {statusCount('CONFLICT')}</Text>
-          {operations.map((operation) => (
-            <Text key={operation.id} style={styles.value}>
-              {operation.operationType ?? 'ALTERACAO'} · {new Date(operation.createdAt).toLocaleString('pt-BR')}
-            </Text>
-          ))}
+          <Text style={styles.countValue}>{counts.total}</Text>
+          <Text style={styles.label}>
+            {counts.total === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}
+          </Text>
         </Card>
-      )}
-      <Button label="Sincronizar agora" onPress={() => void sync()} loading={syncing} />
-      {statusCount('FAILED') > 0 ? <Button label="Tentar novamente as falhas" variant="secondary" onPress={() => void retryFailed()} loading={syncing} /> : null}
-      {__DEV__ ? (
-        <View style={styles.developmentActions}>
-          <Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text>
-          <Button label="Simular falha de envio" variant="secondary" onPress={() => void simulate('FAILED')} disabled={pending === 0} />
-          <Button label="Simular conflito" variant="secondary" onPress={() => void simulate('CONFLICT')} disabled={pending === 0} />
-        </View>
-      ) : null}
-      <Text style={styles.warning}>
-        Ordem: push da outbox, depois pull por cursor. O cursor só avança depois de gravar as mudanças localmente.
-      </Text>
-      {syncNotice ? <Text style={syncError ? styles.error : styles.success}>{syncNotice}</Text> : null}
+
+        <Card style={styles.card}>
+          <Text style={styles.label}>Última sincronização</Text>
+          <Text style={styles.lastSync}>{lastSyncLabel}</Text>
+          <Text style={styles.value}>
+            {banner?.kind === 'syncing'
+              ? banner.message
+              : 'Toque em sincronizar para enviar e baixar mudanças.'}
+          </Text>
+        </Card>
+
+        {operations.length === 0 ? (
+          <EmptyState
+            title="Nenhuma alteração pendente de envio"
+            description="Você ainda pode sincronizar para baixar inspeções e respostas do servidor."
+          />
+        ) : (
+          <Card style={styles.card}>
+            <Text style={styles.label}>Detalhamento da fila</Text>
+            <Text style={styles.value}>Pendentes: {counts.pending}</Text>
+            <Text style={styles.value}>Enviando: {counts.syncing}</Text>
+            <Text style={styles.value}>Falhas: {counts.failed}</Text>
+            <Text style={styles.value}>Conflitos: {counts.conflict}</Text>
+            {operations.map((operation) => (
+              <View key={operation.id} style={styles.operationRow}>
+                <Text style={styles.operationTitle}>
+                  {operationTypeLabel(operation.operationType)}
+                  {__DEV__ && operation.operationType ? ` (${operation.operationType})` : ''}
+                  {' · '}
+                  <Text style={{ color: operationStatusColor(operation.status) }}>
+                    {operationStatusLabel(operation.status)}
+                  </Text>
+                </Text>
+                <Text style={styles.operationMeta}>
+                  {new Date(operation.createdAt).toLocaleString('pt-BR')}
+                </Text>
+                {(operation.status === 'FAILED' || operation.status === 'CONFLICT') ? (
+                  <Text style={[styles.operationMessage, { color: operationStatusColor(operation.status) }]}>
+                    {humanizeSyncError(operation.lastError)}
+                  </Text>
+                ) : null}
+                {__DEV__ ? (
+                  <Text style={styles.devMeta}>
+                    DEV: {operation.id.slice(0, 8)}… · Tentativas: {operation.attempts}
+                    {operation.lastError ? ` · ${operation.lastError.slice(0, 200)}` : ''}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </Card>
+        )}
+
+        <Button label="Sincronizar agora" onPress={() => void sync()} loading={syncing} />
+        {counts.failed > 0 ? (
+          <Button
+            label="Tentar novamente as falhas"
+            variant="secondary"
+            onPress={() => void retryFailed()}
+            loading={syncing}
+          />
+        ) : null}
+
+        <Text style={styles.warning}>
+          Ordem: push da outbox, depois pull por cursor. O cursor só avança depois de gravar as mudanças localmente.
+        </Text>
+
+        {banner && banner.kind !== 'syncing' ? (
+          <View style={styles.bannerBlock}>
+            <Text style={bannerStyle}>{banner.message}</Text>
+            {banner.showReauth ? (
+              <Button
+                label="Entrar novamente"
+                variant="secondary"
+                onPress={() => void signOut({ revokeRemote: false })}
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        {__DEV__ ? (
+          <View style={styles.developmentActions}>
+            <Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text>
+            <Button
+              label="Simular falha de envio"
+              variant="secondary"
+              onPress={() => void simulate('FAILED')}
+              disabled={counts.total === 0}
+            />
+            <Button
+              label="Simular conflito"
+              variant="secondary"
+              onPress={() => void simulate('CONFLICT')}
+              disabled={counts.total === 0}
+            />
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -139,11 +230,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
   },
-  header: { marginHorizontal: -spacing.lg, padding: spacing.lg, paddingTop: spacing.xl, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, marginBottom: spacing.sm },
+  header: {
+    paddingHorizontal: spacing.lg,
+    padding: spacing.lg,
+    paddingTop: spacing.xl,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+    paddingBottom: spacing.xl,
+  },
   title: {
     ...typography.title,
     color: colors.textOnDark,
@@ -154,9 +254,22 @@ const styles = StyleSheet.create({
   label: { ...typography.body, color: colors.textMuted },
   lastSync: { ...typography.subtitle, color: colors.text },
   value: { ...typography.body, color: colors.text, lineHeight: 21 },
+  operationRow: {
+    gap: 2,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  operationTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
+  operationMeta: { ...typography.caption, color: colors.textMuted },
+  operationMessage: { ...typography.caption, lineHeight: 18 },
+  devMeta: { ...typography.caption, color: colors.textMuted, opacity: 0.8 },
   developmentActions: { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: spacing.md },
   developmentLabel: { ...typography.caption, color: colors.textMuted, textTransform: 'uppercase' },
+  bannerBlock: { gap: spacing.sm },
   success: { ...typography.body, color: colors.success, textAlign: 'center' },
+  partial: { ...typography.body, color: SYNC_WARNING_COLOR, textAlign: 'center' },
   error: { ...typography.body, color: colors.danger, textAlign: 'center' },
   warning: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 21 },
 });

@@ -1,9 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
+import { Button, Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
+import { getPendingOperations } from '@/features/inspections/draftStore';
+import {
+  buildHomeChip,
+  countByStatus,
+  SYNC_WARNING_COLOR,
+  type HomeChipModel,
+} from '@/features/inspections/syncStatusUi';
 
 // Home is a tab route.
 
@@ -78,8 +87,28 @@ const PRIORITY_COLOR: Record<Priority, string> = {
   baixa: colors.green,
 };
 
+function homeChipBorder(tone: HomeChipModel['tone']): string {
+  if (tone === 'danger') return colors.danger;
+  if (tone === 'warning') return SYNC_WARNING_COLOR;
+  return colors.navy;
+}
+
 export default function HomeScreen() {
   const signOut = useAuthStore((state) => state.signOut);
+  const [syncChip, setSyncChip] = useState<HomeChipModel | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    void getPendingOperations()
+      .then((operations) => setSyncChip(buildHomeChip(countByStatus(operations))))
+      .catch(() => setSyncChip(null));
+  }, []));
+
+  const openSync = (autoSync: boolean) => {
+    router.push({
+      pathname: '/(protected)/(tabs)/synchronization',
+      params: autoSync ? { sync: '1' } : undefined,
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -121,6 +150,33 @@ export default function HomeScreen() {
             </Card>
           ))}
         </View>
+
+        {syncChip ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={syncChip.accessibilityLabel}
+            onPress={() => openSync(syncChip.actionLabel === 'Sincronizar')}
+          >
+            <Card style={[styles.syncChip, { borderColor: homeChipBorder(syncChip.tone) }]}>
+              <View style={styles.syncChipBody}>
+                <Ionicons
+                  name={syncChip.tone === 'danger' ? 'alert-circle' : syncChip.tone === 'warning' ? 'warning-outline' : 'cloud-upload-outline'}
+                  size={20}
+                  color={homeChipBorder(syncChip.tone)}
+                />
+                <View style={styles.syncChipText}>
+                  <Text style={[styles.syncChipTitle, { color: homeChipBorder(syncChip.tone) }]}>{syncChip.title}</Text>
+                  {syncChip.subtitle ? <Text style={styles.syncChipSubtitle}>{syncChip.subtitle}</Text> : null}
+                </View>
+              </View>
+              <Button
+                label={syncChip.actionLabel}
+                variant="secondary"
+                onPress={() => openSync(syncChip.actionLabel === 'Sincronizar')}
+              />
+            </Card>
+          </Pressable>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Próximas inspeções</Text>
         <View style={styles.list}>
@@ -203,6 +259,26 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  syncChip: {
+    gap: spacing.sm,
+    borderWidth: 1,
+  },
+  syncChipBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  syncChipText: {
+    flex: 1,
+    gap: 2,
+  },
+  syncChipTitle: {
+    ...typography.subtitle,
+  },
+  syncChipSubtitle: {
+    ...typography.caption,
+    color: colors.textMuted,
   },
   statCard: {
     flex: 1,
