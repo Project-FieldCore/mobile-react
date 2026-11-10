@@ -8,6 +8,10 @@ export default function ProtectedLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="inspections/[id]" />
+        <Stack.Screen
+          name="synchronization/conflict/[operationId]"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
       </Stack>
     </RouteGuard>
   );

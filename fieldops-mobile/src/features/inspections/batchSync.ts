@@ -1,4 +1,4 @@
-import type { PendingOperation, SyncOperationStatus } from './draftStore';
+import type { ConflictServerSnapshot, PendingOperation, SyncOperationStatus } from './draftStore';
 
 export type BatchSyncResult = {
   sent: number;
@@ -17,11 +17,22 @@ export type BatchSyncStorage = {
     bumpAttempts?: boolean,
   ) => Promise<void>;
   removeSyncOperation: (id: string) => Promise<void>;
+  recordConflictOperation: (
+    id: string,
+    lastError: string,
+    entityVersion: number | null | undefined,
+    server: ConflictServerSnapshot | null | undefined,
+  ) => Promise<void>;
 };
 
 export type SendOutcome =
   | { kind: 'applied' }
-  | { kind: 'conflict'; message?: string }
+  | {
+    kind: 'conflict';
+    message?: string;
+    entityVersion?: number | null;
+    server?: ConflictServerSnapshot | null;
+  }
   | { kind: 'failed'; message: string }
   | { kind: 'skipped' };
 
@@ -84,10 +95,11 @@ export async function processPendingOperations(
         continue;
       }
       if (outcome.kind === 'conflict') {
-        await storage.updateSyncOperation(
+        await storage.recordConflictOperation(
           operation.id,
-          'CONFLICT',
           outcome.message ?? 'A versão local diverge da versão no servidor.',
+          outcome.entityVersion,
+          outcome.server,
         );
         blockedInspections.add(operation.inspectionId);
         result.conflicts += 1;

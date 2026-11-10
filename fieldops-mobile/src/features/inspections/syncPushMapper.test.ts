@@ -48,9 +48,16 @@ describe('syncPushMapper', () => {
   it('mapeia recibos APPLIED/ALREADY_APPLIED/CONFLICT/REJECTED', () => {
     expect(mapSyncReceipt({ operationId: '1', status: 'APPLIED', entityVersion: 3 })).toEqual({ kind: 'applied' });
     expect(mapSyncReceipt({ operationId: '1', status: 'ALREADY_APPLIED', entityVersion: 3 })).toEqual({ kind: 'applied' });
-    expect(mapSyncReceipt({ operationId: '1', status: 'CONFLICT', entityVersion: 4 })).toEqual({
+    expect(mapSyncReceipt({
+      operationId: '1',
+      status: 'CONFLICT',
+      entityVersion: 4,
+      server: { valueText: 'server' },
+    })).toEqual({
       kind: 'conflict',
       message: receiptMessage('CONFLICT', 4),
+      entityVersion: 4,
+      server: { valueText: 'server' },
     });
     expect(mapSyncReceipt({ operationId: '1', status: 'REJECTED' })).toEqual({
       kind: 'failed',
