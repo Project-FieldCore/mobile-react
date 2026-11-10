@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
@@ -148,32 +148,57 @@ export default function SynchronizationScreen() {
             <Text style={styles.value}>Enviando: {counts.syncing}</Text>
             <Text style={styles.value}>Falhas: {counts.failed}</Text>
             <Text style={styles.value}>Conflitos: {counts.conflict}</Text>
-            {operations.map((operation) => (
-              <View key={operation.id} style={styles.operationRow}>
-                <Text style={styles.operationTitle}>
-                  {operationTypeLabel(operation.operationType)}
-                  {__DEV__ && operation.operationType ? ` (${operation.operationType})` : ''}
-                  {' · '}
-                  <Text style={{ color: operationStatusColor(operation.status) }}>
-                    {operationStatusLabel(operation.status)}
+            {operations.map((operation) => {
+              const row = (
+                <>
+                  <Text style={styles.operationTitle}>
+                    {operationTypeLabel(operation.operationType)}
+                    {__DEV__ && operation.operationType ? ` (${operation.operationType})` : ''}
+                    {' · '}
+                    <Text style={{ color: operationStatusColor(operation.status) }}>
+                      {operationStatusLabel(operation.status)}
+                    </Text>
                   </Text>
-                </Text>
-                <Text style={styles.operationMeta}>
-                  {new Date(operation.createdAt).toLocaleString('pt-BR')}
-                </Text>
-                {(operation.status === 'FAILED' || operation.status === 'CONFLICT') ? (
-                  <Text style={[styles.operationMessage, { color: operationStatusColor(operation.status) }]}>
-                    {humanizeSyncError(operation.lastError)}
+                  <Text style={styles.operationMeta}>
+                    {new Date(operation.createdAt).toLocaleString('pt-BR')}
                   </Text>
-                ) : null}
-                {__DEV__ ? (
-                  <Text style={styles.devMeta}>
-                    DEV: {operation.id.slice(0, 8)}… · Tentativas: {operation.attempts}
-                    {operation.lastError ? ` · ${operation.lastError.slice(0, 200)}` : ''}
-                  </Text>
-                ) : null}
-              </View>
-            ))}
+                  {(operation.status === 'FAILED' || operation.status === 'CONFLICT') ? (
+                    <Text style={[styles.operationMessage, { color: operationStatusColor(operation.status) }]}>
+                      {humanizeSyncError(operation.lastError)}
+                    </Text>
+                  ) : null}
+                  {operation.status === 'CONFLICT' ? (
+                    <Text style={styles.conflictHint}>Toque para analisar</Text>
+                  ) : null}
+                  {__DEV__ ? (
+                    <Text style={styles.devMeta}>
+                      DEV: {operation.id.slice(0, 8)}… · Tentativas: {operation.attempts}
+                      {operation.lastError ? ` · ${operation.lastError.slice(0, 200)}` : ''}
+                    </Text>
+                  ) : null}
+                </>
+              );
+
+              if (operation.status === 'CONFLICT') {
+                return (
+                  <Pressable
+                    key={operation.id}
+                    accessibilityRole="button"
+                    accessibilityLabel="Analisar conflito"
+                    style={styles.operationRow}
+                    onPress={() => router.push({
+                      pathname: '/synchronization/conflict/[operationId]',
+                      params: { operationId: operation.id },
+                    })}
+                  >
+                    {row}
+                    <Text style={styles.analyzeCta}>Analisar conflito</Text>
+                  </Pressable>
+                );
+              }
+
+              return <View key={operation.id} style={styles.operationRow}>{row}</View>;
+            })}
           </Card>
         )}
 
@@ -264,6 +289,8 @@ const styles = StyleSheet.create({
   operationTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
   operationMeta: { ...typography.caption, color: colors.textMuted },
   operationMessage: { ...typography.caption, lineHeight: 18 },
+  conflictHint: { ...typography.caption, color: SYNC_WARNING_COLOR },
+  analyzeCta: { ...typography.caption, color: colors.navy, fontWeight: '700', marginTop: 2 },
   devMeta: { ...typography.caption, color: colors.textMuted, opacity: 0.8 },
   developmentActions: { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: spacing.md },
   developmentLabel: { ...typography.caption, color: colors.textMuted, textTransform: 'uppercase' },

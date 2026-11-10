@@ -19,6 +19,16 @@ export type InspectionLocation = { latitude: number; longitude: number; captured
 
 export type SyncOperationStatus = 'PENDING' | 'SYNCING' | 'FAILED' | 'CONFLICT';
 
+export type ConflictServerSnapshot = {
+  id?: string | null;
+  valueText?: string | null;
+  valueNumber?: number | null;
+  valueBoolean?: boolean | null;
+  valueDate?: string | null;
+  conformity?: string | null;
+  observation?: string | null;
+};
+
 export type PendingOperation = {
   id: string;
   inspectionId: string;
@@ -28,6 +38,9 @@ export type PendingOperation = {
   lastError?: string;
   operationType?: string;
   payload?: string;
+  conflictEntityVersion?: number | null;
+  conflictServer?: ConflictServerSnapshot | null;
+  conflictAt?: string;
 };
 
 const drafts = new Map<string, InspectionDraft>();
@@ -48,6 +61,11 @@ async function getDatabase() {
       if (!columns.some((column) => column.name === 'operation_type')) {
         await database.execAsync('ALTER TABLE sync_operations ADD COLUMN operation_type TEXT');
         await database.execAsync('ALTER TABLE sync_operations ADD COLUMN payload TEXT');
+      }
+      if (!columns.some((column) => column.name === 'conflict_entity_version')) {
+        await database.execAsync('ALTER TABLE sync_operations ADD COLUMN conflict_entity_version INTEGER');
+        await database.execAsync('ALTER TABLE sync_operations ADD COLUMN conflict_server TEXT');
+        await database.execAsync('ALTER TABLE sync_operations ADD COLUMN conflict_at TEXT');
       }
       return database;
     });
@@ -292,6 +310,42 @@ export async function enqueueRawSyncOperation(operation: PendingOperation): Prom
   );
 }
 
+function mapSyncRow(row: {
+  id: string;
+  inspectionId: string;
+  createdAt: string;
+  status: SyncOperationStatus;
+  attempts: number;
+  lastError?: string | null;
+  operationType?: string | null;
+  payload?: string | null;
+  conflictEntityVersion?: number | null;
+  conflictServer?: string | null;
+  conflictAt?: string | null;
+}): PendingOperation {
+  let conflictServer: ConflictServerSnapshot | null | undefined;
+  if (row.conflictServer) {
+    try {
+      conflictServer = JSON.parse(row.conflictServer) as ConflictServerSnapshot;
+    } catch {
+      conflictServer = null;
+    }
+  }
+  return {
+    id: row.id,
+    inspectionId: row.inspectionId,
+    createdAt: row.createdAt,
+    status: row.status,
+    attempts: row.attempts,
+    lastError: row.lastError ?? undefined,
+    operationType: row.operationType ?? undefined,
+    payload: row.payload ?? undefined,
+    conflictEntityVersion: row.conflictEntityVersion ?? null,
+    conflictServer: conflictServer ?? null,
+    conflictAt: row.conflictAt ?? undefined,
+  };
+}
+
 export async function getPendingOperations(): Promise<PendingOperation[]> {
   if (Platform.OS === 'web') {
     if (typeof localStorage === 'undefined') return [];
@@ -301,7 +355,84 @@ export async function getPendingOperations(): Promise<PendingOperation[]> {
     } catch { return []; }
   }
   const database = await getDatabase();
-  return database.getAllAsync<PendingOperation>('SELECT id, inspection_id AS inspectionId, created_at AS createdAt, status, attempts, last_error AS lastError, operation_type AS operationType, payload FROM sync_operations ORDER BY created_at ASC');
+  const rows = await database.getAllAsync<{
+    id: string;
+    inspectionId: string;
+    createdAt: string;
+    status: SyncOperationStatus;
+    attempts: number;
+    lastError?: string | null;
+    operationType?: string | null;
+    payload?: string | null;
+    conflictEntityVersion?: number | null;
+    conflictServer?: string | null;
+    conflictAt?: string | null;
+  }>('SELECT id, inspection_id AS inspectionId, created_at AS createdAt, status, attempts, last_error AS lastError, operation_type AS operationType, payload, conflict_entity_version AS conflictEntityVersion, conflict_server AS conflictServer, conflict_at AS conflictAt FROM sync_operations ORDER BY created_at ASC');
+  return rows.map(mapSyncRow);
+}
+
+export async function getSyncOperationById(id: string): Promise<PendingOperation | null> {
+  const operations = await getPendingOperations();
+  return operations.find((operation) => operation.id === id) ?? null;
+}
+
+export async function recordConflictOperation(
+  id: string,
+  lastError: string,
+  entityVersion: number | null | undefined,
+  server: ConflictServerSnapshot | null | undefined,
+): Promise<void> {
+  const conflictAt = new Date().toISOString();
+  const serializedServer = server == null ? null : JSON.stringify(server);
+  if (Platform.OS === 'web') {
+    const next = (await getPendingOperations()).map((operation) => (
+      operation.id === id
+        ? {
+          ...operation,
+          status: 'CONFLICT' as const,
+          attempts: operation.attempts + 1,
+          lastError,
+          conflictEntityVersion: entityVersion ?? null,
+          conflictServer: server ?? null,
+          conflictAt,
+        }
+        : operation
+    ));
+    await writeWebOutbox(next);
+    return;
+  }
+  const database = await getDatabase();
+  await database.runAsync(
+    'UPDATE sync_operations SET status = ?, attempts = attempts + 1, last_error = ?, conflict_entity_version = ?, conflict_server = ?, conflict_at = ? WHERE id = ?',
+    'CONFLICT',
+    lastError,
+    entityVersion ?? null,
+    serializedServer,
+    conflictAt,
+    id,
+  );
+}
+
+export async function clearConflictMetadata(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const next = (await getPendingOperations()).map((operation) => (
+      operation.id === id
+        ? {
+          ...operation,
+          conflictEntityVersion: null,
+          conflictServer: null,
+          conflictAt: undefined,
+        }
+        : operation
+    ));
+    await writeWebOutbox(next);
+    return;
+  }
+  const database = await getDatabase();
+  await database.runAsync(
+    'UPDATE sync_operations SET conflict_entity_version = NULL, conflict_server = NULL, conflict_at = NULL WHERE id = ?',
+    id,
+  );
 }
 
 export async function updateSyncOperation(
@@ -377,7 +508,35 @@ export async function retryFailedOperations(): Promise<number> {
 export async function simulateSyncOutcome(status: Extract<SyncOperationStatus, 'FAILED' | 'CONFLICT'>): Promise<boolean> {
   const operation = (await getPendingOperations()).find((item) => item.status === 'PENDING');
   if (!operation) return false;
-  const message = status === 'CONFLICT' ? 'A versão local diverge da versão aprovada no servidor.' : 'A conexão foi interrompida antes da confirmação do envio.';
-  await updateSyncOperation(operation.id, status, message);
+  if (status === 'CONFLICT') {
+    let localValue: ConflictServerSnapshot = { valueText: 'local' };
+    try {
+      const payload = JSON.parse(operation.payload ?? '{}') as ConflictServerSnapshot & {
+        valueText?: string;
+        valueBoolean?: boolean;
+        conformity?: string;
+      };
+      localValue = {
+        valueText: payload.valueText ?? 'local',
+        valueBoolean: payload.valueBoolean,
+        conformity: payload.conformity,
+        observation: payload.observation ?? null,
+      };
+    } catch {
+      /* keep default */
+    }
+    await recordConflictOperation(
+      operation.id,
+      'A versão local diverge da versão aprovada no servidor.',
+      1,
+      {
+        valueText: localValue.valueText === 'local' ? 'servidor' : 'valor no servidor',
+        valueBoolean: typeof localValue.valueBoolean === 'boolean' ? !localValue.valueBoolean : false,
+        observation: 'snapshot simulado',
+      },
+    );
+    return true;
+  }
+  await updateSyncOperation(operation.id, status, 'A conexão foi interrompida antes da confirmação do envio.');
   return true;
 }

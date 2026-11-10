@@ -109,7 +109,12 @@ export function mapSyncReceipt(result: MobileSyncOperationResult): SendOutcome {
     return { kind: 'applied' };
   }
   if (result.status === 'CONFLICT') {
-    return { kind: 'conflict', message: receiptMessage(result.status, result.entityVersion) };
+    return {
+      kind: 'conflict',
+      message: receiptMessage(result.status, result.entityVersion),
+      entityVersion: result.entityVersion ?? null,
+      server: result.server ?? null,
+    };
   }
   return { kind: 'failed', message: receiptMessage(result.status, result.entityVersion) };
 }

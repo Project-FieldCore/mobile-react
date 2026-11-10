@@ -1,5 +1,6 @@
 import {
   getPendingOperations,
+  recordConflictOperation,
   rekeySyncOperation,
   removeSyncOperation,
   replaceSyncOperationPayload,
@@ -68,6 +69,7 @@ export async function runOutboxSync(): Promise<BatchSyncResult> {
       getPendingOperations,
       updateSyncOperation,
       removeSyncOperation,
+      recordConflictOperation,
     },
     sendOutboxOperation,
   );
