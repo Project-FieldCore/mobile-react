@@ -98,6 +98,26 @@ export function saveInspectionAnswers(
   return persisted;
 }
 
+/**
+ * Aplica respostas vindas do pull sem enfileirar na outbox (evita eco no push).
+ */
+export async function mergeServerAnswers(
+  id: string,
+  answers: Record<string, string>,
+  nonConformityDescription?: string,
+  baseVersion?: number,
+): Promise<void> {
+  const draft = (await hydrateInspectionDraft(id)) ?? { answers: {}, evidence: [] };
+  const next: InspectionDraft = {
+    ...draft,
+    answers: { ...draft.answers, ...answers },
+    nonConformityDescription: nonConformityDescription || draft.nonConformityDescription,
+    baseVersion: baseVersion ?? draft.baseVersion,
+  };
+  drafts.set(id, next);
+  await queueInspectionDraftPersistence(id, next);
+}
+
 async function getOrCreateDraft(id: string): Promise<InspectionDraft> {
   return (await hydrateInspectionDraft(id)) ?? { answers: {}, evidence: [] };
 }

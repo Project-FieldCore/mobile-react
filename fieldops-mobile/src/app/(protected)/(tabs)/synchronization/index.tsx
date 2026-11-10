@@ -6,68 +6,131 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import { getPendingSyncCount } from '@/features/inspections/mockRepository';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
-import { runOutboxSync } from '@/features/inspections/runOutboxSync';
+import { getLastPullServerTime, getLastSyncAt } from '@/features/inspections/syncCursorStore';
+import { runMobileSync } from '@/features/inspections/runMobileSync';
 
-// Synchronization is a tab route.
+function formatSyncInstant(iso: string | null): string {
+  if (!iso) return 'Ainda não sincronizado';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('pt-BR');
+}
 
 export default function SynchronizationScreen() {
   const [pending, setPending] = useState(getPendingSyncCount());
   const [operations, setOperations] = useState<PendingOperation[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState(false);
+  const [lastSyncLabel, setLastSyncLabel] = useState('Ainda não sincronizado');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
   const loadPending = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
     try {
-      const next = await getPendingOperations();
+      const [next, syncedAt, serverTime] = await Promise.all([
+        getPendingOperations(),
+        getLastSyncAt(),
+        getLastPullServerTime(),
+      ]);
       setOperations(next);
       setPending(next.length);
+      setLastSyncLabel(formatSyncInstant(syncedAt ?? serverTime));
     } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, []);
+
   const statusCount = (status: PendingOperation['status']) => operations.filter((operation) => operation.status === status).length;
+
   const sync = async () => {
     setSyncing(true);
     setSyncNotice(null);
+    setSyncError(false);
     try {
-      const result = await runOutboxSync();
+      const result = await runMobileSync();
       await loadPending();
-      const parts = [
-        result.sent ? `${result.sent} confirmada(s)` : null,
-        result.conflicts ? `${result.conflicts} conflito(s)` : null,
-        result.failed ? `${result.failed} falha(s)` : null,
-        result.skipped ? `${result.skipped} mantida(s) para outro fluxo` : null,
+      const pushParts = [
+        result.push.sent ? `${result.push.sent} enviada(s)` : null,
+        result.push.conflicts ? `${result.push.conflicts} conflito(s)` : null,
+        result.push.failed ? `${result.push.failed} falha(s) no envio` : null,
       ].filter(Boolean);
-      setSyncNotice(parts.length ? `Sincronização concluída: ${parts.join(', ')}.` : 'Nenhuma operação pendente para envio.');
+      const pullParts = [
+        result.pull.applied.upsertedInspections ? `${result.pull.applied.upsertedInspections} inspeção(ões)` : null,
+        result.pull.applied.upsertedResponses ? `${result.pull.applied.upsertedResponses} resposta(s)` : null,
+        result.pull.applied.deletedInspections ? `${result.pull.applied.deletedInspections} remoção(ões)` : null,
+      ].filter(Boolean);
+      const quietPull = result.pull.changes === 0;
+      setSyncNotice([
+        pushParts.length ? `Envio: ${pushParts.join(', ')}` : 'Envio: nada pendente',
+        quietPull ? 'Pull: sem mudanças novas' : `Pull: ${pullParts.join(', ') || `${result.pull.changes} mudança(s)`}`,
+        result.pull.serverTime ? `Servidor: ${formatSyncInstant(result.pull.serverTime)}` : null,
+      ].filter(Boolean).join(' · '));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível sincronizar agora.';
+      setSyncError(true);
       setSyncNotice(message);
       await loadPending();
     } finally {
       setSyncing(false);
     }
   };
+
   const retryFailed = async () => { setSyncing(true); await retryFailedOperations(); await loadPending(); setSyncing(false); };
   const simulate = async (status: 'FAILED' | 'CONFLICT') => { setSyncing(true); await simulateSyncOutcome(status); await loadPending(); setSyncing(false); };
   useFocusEffect(useCallback(() => { void loadPending(); }, [loadPending]));
+
   if (loading) return <LoadingState title="Carregando fila de sincronização..." />;
   if (loadError) return <ErrorState title="Não foi possível carregar a fila" description="Os dados permanecem seguros neste dispositivo." onRetry={() => void loadPending()} />;
+
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}><Text style={styles.title}>Sincronização</Text><Text style={styles.subtitle}>Acompanhe os dados salvos no dispositivo.</Text></LinearGradient>
-      <Card style={styles.card}><Text style={styles.countValue}>{pending}</Text><Text style={styles.label}>{pending === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}</Text></Card>
-      <Card style={styles.card}><Text style={styles.label}>Estado da sincronização</Text><Text style={styles.lastSync}>{syncNotice ?? 'Pronto para enviar respostas via sync push'}</Text></Card>
-      {operations.length === 0 ? <EmptyState title="Nenhuma alteração pendente" description="As alterações locais aparecerão aqui antes de serem enviadas." /> : <Card style={styles.card}><Text style={styles.label}>Detalhamento da fila</Text><Text style={styles.value}>Pendentes: {statusCount('PENDING')}</Text><Text style={styles.value}>Enviando: {statusCount('SYNCING')}</Text><Text style={styles.value}>Falhas: {statusCount('FAILED')}</Text><Text style={styles.value}>Conflitos: {statusCount('CONFLICT')}</Text>{operations.map((operation) => <Text key={operation.id} style={styles.value}>{operation.operationType ?? 'ALTERACAO'} · {new Date(operation.createdAt).toLocaleString('pt-BR')}</Text>)}</Card>}
-      <Button label="Sincronizar agora" onPress={() => void sync()} loading={syncing} disabled={pending === 0} />
+      <LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
+        <Text style={styles.title}>Sincronização</Text>
+        <Text style={styles.subtitle}>Envio da outbox e download incremental por cursor.</Text>
+      </LinearGradient>
+      <Card style={styles.card}>
+        <Text style={styles.countValue}>{pending}</Text>
+        <Text style={styles.label}>{pending === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}</Text>
+      </Card>
+      <Card style={styles.card}>
+        <Text style={styles.label}>Última sincronização</Text>
+        <Text style={styles.lastSync}>{lastSyncLabel}</Text>
+        <Text style={styles.value}>{syncNotice ?? 'Toque em sincronizar para enviar e baixar mudanças.'}</Text>
+      </Card>
+      {operations.length === 0 ? (
+        <EmptyState title="Nenhuma alteração pendente de envio" description="Você ainda pode sincronizar para baixar inspeções e respostas do servidor." />
+      ) : (
+        <Card style={styles.card}>
+          <Text style={styles.label}>Detalhamento da fila</Text>
+          <Text style={styles.value}>Pendentes: {statusCount('PENDING')}</Text>
+          <Text style={styles.value}>Enviando: {statusCount('SYNCING')}</Text>
+          <Text style={styles.value}>Falhas: {statusCount('FAILED')}</Text>
+          <Text style={styles.value}>Conflitos: {statusCount('CONFLICT')}</Text>
+          {operations.map((operation) => (
+            <Text key={operation.id} style={styles.value}>
+              {operation.operationType ?? 'ALTERACAO'} · {new Date(operation.createdAt).toLocaleString('pt-BR')}
+            </Text>
+          ))}
+        </Card>
+      )}
+      <Button label="Sincronizar agora" onPress={() => void sync()} loading={syncing} />
       {statusCount('FAILED') > 0 ? <Button label="Tentar novamente as falhas" variant="secondary" onPress={() => void retryFailed()} loading={syncing} /> : null}
-      {__DEV__ ? <View style={styles.developmentActions}><Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text><Button label="Simular falha de envio" variant="secondary" onPress={() => void simulate('FAILED')} disabled={pending === 0} /><Button label="Simular conflito" variant="secondary" onPress={() => void simulate('CONFLICT')} disabled={pending === 0} /></View> : null}
-      {pending > 0 ? <Text style={styles.warning}>Os dados permanecem neste dispositivo até a confirmação do servidor. Respostas seguem por /mobile/sync/push; localização, evidência e conclusão ficam na fila para fluxos dedicados.</Text> : null}
-      {syncNotice ? <Text style={styles.success}>{syncNotice}</Text> : null}
+      {__DEV__ ? (
+        <View style={styles.developmentActions}>
+          <Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text>
+          <Button label="Simular falha de envio" variant="secondary" onPress={() => void simulate('FAILED')} disabled={pending === 0} />
+          <Button label="Simular conflito" variant="secondary" onPress={() => void simulate('CONFLICT')} disabled={pending === 0} />
+        </View>
+      ) : null}
+      <Text style={styles.warning}>
+        Ordem: push da outbox, depois pull por cursor. O cursor só avança depois de gravar as mudanças localmente.
+      </Text>
+      {syncNotice ? <Text style={syncError ? styles.error : styles.success}>{syncNotice}</Text> : null}
     </View>
   );
 }
@@ -94,5 +157,6 @@ const styles = StyleSheet.create({
   developmentActions: { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: spacing.md },
   developmentLabel: { ...typography.caption, color: colors.textMuted, textTransform: 'uppercase' },
   success: { ...typography.body, color: colors.success, textAlign: 'center' },
+  error: { ...typography.body, color: colors.danger, textAlign: 'center' },
   warning: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 21 },
 });

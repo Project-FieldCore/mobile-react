@@ -11,3 +11,7 @@ Mobile sync push contract excerpt (PBI-0051.3): `mobile-sync-push.json`,
 sourced from api-java `openapi/fieldops-v1.yaml` path
 `POST /api/v1/mobile/sync/push`. The app client calls `/mobile/sync/push`
 relative to `EXPO_PUBLIC_API_URL` (already prefixed with `/api/v1`).
+
+Mobile sync pull contract excerpt (PBI-0053.1): `mobile-sync-pull.json`,
+path `GET /api/v1/mobile/sync/pull?cursor=`. Client path: `/mobile/sync/pull`.
+Cursor is opaque; advance `last_pull_cursor` only after local persistence.
