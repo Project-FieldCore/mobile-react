@@ -9,8 +9,26 @@ import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export type InspectionStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'PENDING_SYNC' | 'CANCELED';
+export type InspectionStatus =
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'SUBMITTED'
+  | 'PENDING_SYNC'
+  | 'CANCELED'
+  | 'APPROVED'
+  | 'REJECTED';
 export type InspectionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** Formal review decision from sync pull / `/inspections/my` (PBI-0062). */
+export type InspectionReviewDecision = 'APPROVED' | 'REJECTED';
+
+export type InspectionReview = {
+  decision: InspectionReviewDecision;
+  motivo: string | null;
+  reviewerId: string;
+  reviewerName?: string | null;
+  reviewedAt: string;
+};
 
 export type ChecklistItem = {
   id: string;
@@ -40,6 +58,7 @@ export type Inspection = {
   instructions: string;
   startedAt?: string;
   version?: number;
+  review?: InspectionReview | null;
 };
 
 const inspections: Inspection[] = [
@@ -168,6 +187,16 @@ const defaultChecklist: ChecklistSection[] = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+/** Fixtures + pull downloads: downloaded rows win by id (REJECTED after sync). */
+async function mergeCachedWithDownloaded(): Promise<Inspection[]> {
+  const cached = await getCachedInspections();
+  const downloaded = await readDownloadedInspections();
+  if (!downloaded.length) return cached;
+  const byId = new Map(cached.map((item) => [item.id, item]));
+  for (const item of downloaded) byId.set(item.id, item);
+  return [...byId.values()];
+}
+
 export async function listInspections(): Promise<Inspection[]> {
   if (usesExecutionApi()) {
     try {
@@ -181,7 +210,7 @@ export async function listInspections(): Promise<Inspection[]> {
     }
   }
   await wait(350);
-  return getCachedInspections();
+  return mergeCachedWithDownloaded();
 }
 
 export async function getInspection(id: string): Promise<Inspection | null> {
@@ -198,7 +227,8 @@ export async function getInspection(id: string): Promise<Inspection | null> {
     }
   }
   await wait(200);
-  return (await getCachedInspections()).find((inspection) => inspection.id === id) ?? null;
+  const merged = await mergeCachedWithDownloaded();
+  return merged.find((inspection) => inspection.id === id) ?? null;
 }
 
 export async function getInspectionChecklist(id: string): Promise<ChecklistSection[] | null> {

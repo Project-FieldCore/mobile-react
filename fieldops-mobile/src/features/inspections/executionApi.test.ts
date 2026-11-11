@@ -41,6 +41,40 @@ describe('executionApi (PBI-0065.3)', () => {
     })]);
   });
 
+  it('mapeia REJECTED + review de /inspections/my (PBI-0062.1)', async () => {
+    mockedApiRequest.mockResolvedValueOnce([{
+      id: 'inspection-rej',
+      clientName: 'Usina Solar',
+      siteName: 'Unidade A',
+      title: 'Inspeção',
+      priority: 'HIGH',
+      status: 'REJECTED',
+      scheduledFor: '2026-11-10T14:30:00.000Z',
+      version: 5,
+      review: {
+        decision: 'REJECTED',
+        motivo: 'Foto ilegível',
+        reviewerId: 'supervisor-1',
+        reviewerName: 'Ana Silva',
+        reviewedAt: '2026-11-10T19:00:00.000Z',
+      },
+    }]);
+
+    const [inspection] = await fetchAssignedInspections();
+
+    expect(inspection).toEqual(expect.objectContaining({
+      id: 'inspection-rej',
+      status: 'REJECTED',
+      review: {
+        decision: 'REJECTED',
+        motivo: 'Foto ilegível',
+        reviewerId: 'supervisor-1',
+        reviewerName: 'Ana Silva',
+        reviewedAt: '2026-11-10T19:00:00.000Z',
+      },
+    }));
+  });
+
   it('adapta o checklist e preserva os requisitos de observação e evidência', async () => {
     mockedApiRequest.mockResolvedValueOnce([{
       title: 'Segurança', order: 1, items: [{
