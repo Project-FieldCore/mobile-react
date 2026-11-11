@@ -1,7 +1,14 @@
-import type { ChecklistSection, Inspection, InspectionPriority, InspectionStatus } from './mockRepository';
+import type {
+  ChecklistSection,
+  Inspection,
+  InspectionPriority,
+  InspectionReview,
+  InspectionStatus,
+} from './mockRepository';
 import type {
   MobileSyncInspectionItem,
   MobileSyncInspectionPayload,
+  MobileSyncInspectionReview,
   MobileSyncResponsePayload,
 } from './syncPullApi';
 
@@ -32,10 +39,28 @@ function mapStatus(status: string): InspectionStatus {
     case 'SUBMITTED':
     case 'PENDING_SYNC':
     case 'CANCELED':
+    case 'APPROVED':
+    case 'REJECTED':
       return status;
+    // Formal review in progress on server — technician already submitted.
+    case 'UNDER_REVIEW':
+      return 'SUBMITTED';
     default:
       return 'ASSIGNED';
   }
+}
+
+export function mapInspectionReview(
+  review?: MobileSyncInspectionReview | null,
+): InspectionReview | null | undefined {
+  if (review == null) return review;
+  return {
+    decision: review.decision,
+    motivo: review.motivo ?? null,
+    reviewerId: review.reviewerId,
+    reviewerName: review.reviewerName ?? null,
+    reviewedAt: review.reviewedAt,
+  };
 }
 
 function itemType(responseType: string): ChecklistSection['items'][number]['type'] {
@@ -95,6 +120,7 @@ export function toMobileInspectionFromPull(
   payload: MobileSyncInspectionPayload,
   existing?: Inspection | null,
 ): Inspection {
+  const review = mapInspectionReview(payload.review);
   return {
     id: payload.id,
     client: existing?.client ?? 'Cliente',
@@ -107,6 +133,8 @@ export function toMobileInspectionFromPull(
     instructions: payload.instructions ?? existing?.instructions ?? '',
     startedAt: payload.startedAtDevice ?? payload.startedAtServer ?? existing?.startedAt,
     version: payload.version,
+    // Explicit null clears a prior review; undefined keeps existing when API omits the field.
+    review: review !== undefined ? review : existing?.review,
   };
 }
 

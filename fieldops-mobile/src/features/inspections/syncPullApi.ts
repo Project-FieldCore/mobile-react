@@ -19,6 +19,15 @@ export type MobileSyncInspectionItem = {
   itemOrder: number;
 };
 
+/** Formal review snapshot on INSPECTION UPSERT (api-java#201 / PBI-0062). */
+export type MobileSyncInspectionReview = {
+  decision: 'APPROVED' | 'REJECTED';
+  motivo: string | null;
+  reviewerId: string;
+  reviewerName?: string | null;
+  reviewedAt: string;
+};
+
 export type MobileSyncInspectionPayload = {
   id: string;
   clientId: string;
@@ -37,6 +46,7 @@ export type MobileSyncInspectionPayload = {
   version: number;
   updatedAt: string;
   items: MobileSyncInspectionItem[];
+  review?: MobileSyncInspectionReview | null;
 };
 
 export type MobileSyncResponsePayload = {

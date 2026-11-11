@@ -6,6 +6,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
 import { getPendingOperations, type PendingOperation } from '@/features/inspections/draftStore';
+import {
+  inspectionStatusColor,
+  inspectionStatusLabel,
+} from '@/features/inspections/inspectionReviewUi';
 import { listInspections, type Inspection, type InspectionPriority, type InspectionStatus } from '@/features/inspections/mockRepository';
 import { listSyncIndicatorForInspection } from '@/features/inspections/syncStatusUi';
 
@@ -73,8 +77,10 @@ function InspectionCard({ inspection, operations }: { inspection: Inspection; op
           <View style={styles.metaRow}><Ionicons name="location-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.site}</Text></View>
           <View style={styles.metaRow}><Ionicons name="time-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.scheduledAt}</Text></View>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: color }]} />
-            <Text style={styles.status}>{statusLabel[inspection.status]}</Text>
+            <View style={[styles.statusDot, { backgroundColor: inspectionStatusColor(inspection.status) }]} />
+            <Text style={[styles.status, { color: inspectionStatusColor(inspection.status) }]}>
+              {inspectionStatusLabel(inspection.status)}
+            </Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </View>
           {syncIndicator ? (
@@ -88,5 +94,5 @@ function InspectionCard({ inspection, operations }: { inspection: Inspection; op
     </Pressable>
   );
 }
-const priorityColor = { HIGH: colors.danger, MEDIUM: '#B7791F', LOW: colors.success }; const priorityLabel = { HIGH: 'Alta', MEDIUM: 'Média', LOW: 'Baixa' }; const statusLabel = { ASSIGNED: 'Atribuída', IN_PROGRESS: 'Em andamento', SUBMITTED: 'Enviada', PENDING_SYNC: 'Aguardando sincronização', CANCELED: 'Cancelada' };
+const priorityColor = { HIGH: colors.danger, MEDIUM: '#B7791F', LOW: colors.success }; const priorityLabel = { HIGH: 'Alta', MEDIUM: 'Média', LOW: 'Baixa' };
 const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: colors.background }, header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, headerIcon: { width: 42, height: 42, borderRadius: radius.md, backgroundColor: '#ffffff26', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm }, title: { ...typography.title, color: colors.textOnDark }, subtitle: { ...typography.body, color: colors.textOnDark, opacity: 0.85, marginTop: spacing.xs }, counter: { alignSelf: 'flex-start', backgroundColor: '#ffffff24', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginTop: spacing.md }, counterText: { ...typography.caption, color: colors.textOnDark }, filterLabel: { ...typography.caption, color: colors.textMuted, marginTop: spacing.md, paddingHorizontal: spacing.lg, textTransform: 'uppercase', letterSpacing: 0.6 }, filters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm }, priorityFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md }, chip: { height: 36, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, chipSelected: { backgroundColor: colors.navy, borderColor: colors.navy }, chipText: { ...typography.caption, color: colors.textMuted }, chipTextSelected: { color: colors.textOnDark }, list: { padding: spacing.lg, paddingTop: 0, gap: spacing.sm }, pressable: { borderRadius: radius.lg }, card: { flexDirection: 'row', padding: 0, overflow: 'hidden' }, priorityStripe: { width: 4 }, cardBody: { flex: 1, padding: spacing.md, gap: spacing.xs }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, alignItems: 'center' }, client: { ...typography.subtitle, color: colors.text, flexShrink: 1 }, priorityBadge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }, priority: { ...typography.caption, fontWeight: '700' }, equipment: { ...typography.body, color: colors.textMuted }, metaRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, meta: { ...typography.caption, color: colors.textMuted }, statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs }, statusDot: { width: 6, height: 6, borderRadius: radius.pill }, status: { ...typography.caption, color: colors.navy, flex: 1 }, syncRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }, syncCaption: { ...typography.caption, flex: 1 } });

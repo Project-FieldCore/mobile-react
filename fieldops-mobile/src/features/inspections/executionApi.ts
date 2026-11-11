@@ -1,7 +1,21 @@
 import { dataSource } from '@/config/dataSource';
 import { apiRequest, apiUpload } from '@/infrastructure/api/client';
 import { getSession } from '@/infrastructure/storage/session';
-import type { ChecklistSection, Inspection, InspectionPriority, InspectionStatus } from './mockRepository';
+import type {
+  ChecklistSection,
+  Inspection,
+  InspectionPriority,
+  InspectionReview,
+  InspectionStatus,
+} from './mockRepository';
+
+type ApiReview = {
+  decision: 'APPROVED' | 'REJECTED';
+  motivo: string | null;
+  reviewerId: string;
+  reviewerName?: string | null;
+  reviewedAt: string;
+};
 
 type ApiAssigned = {
   id: string;
@@ -11,10 +25,11 @@ type ApiAssigned = {
   title: string;
   instructions?: string | null;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED';
+  status: string;
   scheduledFor: string;
   startedAt?: string | null;
   version: number;
+  review?: ApiReview | null;
 };
 
 type ApiItem = {
@@ -42,6 +57,34 @@ function formatWhen(iso: string): string {
   return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+function mapAssignedStatus(status: string): InspectionStatus {
+  switch (status) {
+    case 'ASSIGNED':
+    case 'IN_PROGRESS':
+    case 'SUBMITTED':
+    case 'PENDING_SYNC':
+    case 'CANCELED':
+    case 'APPROVED':
+    case 'REJECTED':
+      return status;
+    case 'UNDER_REVIEW':
+      return 'SUBMITTED';
+    default:
+      return 'ASSIGNED';
+  }
+}
+
+function mapReview(review?: ApiReview | null): InspectionReview | null | undefined {
+  if (review == null) return review;
+  return {
+    decision: review.decision,
+    motivo: review.motivo ?? null,
+    reviewerId: review.reviewerId,
+    reviewerName: review.reviewerName ?? null,
+    reviewedAt: review.reviewedAt,
+  };
+}
+
 export function toMobileInspection(api: ApiAssigned): Inspection {
   return {
     id: api.id,
@@ -51,10 +94,11 @@ export function toMobileInspection(api: ApiAssigned): Inspection {
     scheduledAt: formatWhen(api.scheduledFor),
     scheduledFor: api.scheduledFor,
     priority: PRIORITY[api.priority] ?? 'MEDIUM',
-    status: api.status as InspectionStatus,
+    status: mapAssignedStatus(api.status),
     instructions: api.instructions ?? '',
     startedAt: api.startedAt ?? undefined,
     version: api.version,
+    review: mapReview(api.review),
   };
 }
 

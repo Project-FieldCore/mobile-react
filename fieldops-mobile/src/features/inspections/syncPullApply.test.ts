@@ -106,6 +106,32 @@ describe('applyPullChanges', () => {
     );
   });
 
+  it('UPSERT REJECTED persiste status + review.motivo', async () => {
+    const rejected = inspectionUpsert();
+    rejected.payload = {
+      ...rejected.payload!,
+      status: 'REJECTED',
+      review: {
+        decision: 'REJECTED',
+        motivo: 'Evidência ausente',
+        reviewerId: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr',
+        reviewerName: 'Ana Silva',
+        reviewedAt: '2026-11-10T18:00:00.000Z',
+      },
+    };
+
+    await applyPullChanges([rejected]);
+
+    expect(mockedSaveInspection).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'REJECTED',
+      review: expect.objectContaining({
+        decision: 'REJECTED',
+        motivo: 'Evidência ausente',
+        reviewerName: 'Ana Silva',
+      }),
+    }));
+  });
+
   it('DELETE remove inspeção local pelo entityId do envelope', async () => {
     const result = await applyPullChanges([{
       entityType: 'INSPECTION',
