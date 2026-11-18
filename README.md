@@ -15,7 +15,7 @@ Este repositório contém a aplicação mobile construída com **Expo + React Na
 
 ## 📱 Sobre o produto
 
-O FieldCoregit  substitui formulários impressos, planilhas e mensagens por um fluxo digital integrado de inspeções em campo. Neste app, o técnico consulta as inspeções atribuídas, identifica equipamentos por QR Code, responde checklists dinâmicos, registra evidências (fotos), localização e não conformidades — inclusive em locais sem conexão com a internet.
+O FieldOps substitui formulários impressos, planilhas e mensagens por um fluxo digital integrado de inspeções em campo. Neste app, o técnico consulta as inspeções atribuídas, identifica equipamentos por QR Code, responde checklists dinâmicos, registra evidências (fotos), localização e não conformidades — inclusive em locais sem conexão com a internet.
 
 ---
 
@@ -78,9 +78,8 @@ src/
 
 ### Pré-requisitos
 
-- Node.js LTS
-- npm ou yarn
-- Expo CLI (`npm install -g expo-cli`) ou uso via `npx`
+- Node.js 22 (versão usada no CI) e npm
+- Expo via `npx` (não é necessário instalar o `expo-cli` global)
 - Android Studio (emulador) ou dispositivo físico Android com Expo Go / build de desenvolvimento
 - API do FieldCore rodando localmente ou apontada para o ambiente de integração (ver repositório da API)
 
@@ -94,12 +93,14 @@ npm ci
 
 ### Configuração de ambiente
 
-Crie um arquivo `.env` na raiz com base no `.env.example`:
+Dentro de `fieldops-mobile/`, crie o `.env` a partir do `.env.example`:
 
-No PowerShell, copie o arquivo de exemplo:
+```bash
+cp .env.example .env          # macOS/Linux
+```
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item .env.example .env   # Windows (PowerShell)
 ```
 
 Variáveis principais:
@@ -109,14 +110,15 @@ EXPO_PUBLIC_API_URL=http://localhost:8080/api/v1
 EXPO_PUBLIC_DATA_SOURCE=api
 ```
 
-Use `EXPO_PUBLIC_DATA_SOURCE=mock` para trabalhar sem backend. Para usar a API local em um celular físico, substitua `localhost` pelo IPv4 da máquina na mesma rede, por exemplo `http://192.168.0.10:8080/api/v1`.
+O `.env.example` já vem com `EXPO_PUBLIC_DATA_SOURCE=mock` (funciona sem backend); use `api` para integrar com a API local ([README da api-java](https://github.com/Project-FieldCore/api-java#executar-dev)). No emulador Android, o host da máquina é `10.0.2.2` (`http://10.0.2.2:8080/api/v1`). Para usar a API local em um celular físico, substitua `localhost` pelo IPv4 da máquina na mesma rede, por exemplo `http://192.168.0.10:8080/api/v1`.
 
 > Cada ambiente (local, integração, demonstração) deve possuir sua própria URL de API e configuração — nunca compartilhar credenciais entre ambientes.
 
 ### Executando localmente
 
-```powershell
-npx expo start --clear
+```bash
+cd fieldops-mobile
+npx expo start --clear     # ou: npm start
 ```
 
 - Pressione `a` para abrir no emulador Android
@@ -143,7 +145,8 @@ Detalhes: [docs/CI.md](docs/CI.md). Convenção dos 3 repos: [CI_CONVENTION.md](
 ## 🧪 Testes
 
 ```bash
-npm run test
+cd fieldops-mobile
+npm test
 ```
 
 Cobertura prioritária:
