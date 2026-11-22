@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.projectfieldcore.fieldops",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#152A4E",
         "foregroundImage": "./assets/android-icon-foreground.png",

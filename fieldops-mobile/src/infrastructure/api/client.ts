@@ -88,18 +88,21 @@ async function buildApiError(response: Response): Promise<ApiError> {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, session, ...requestOptions } = options;
+  const apiBaseUrl = assertApiBaseUrl();
+  const ngrokHeaders: Record<string, string> = apiBaseUrl.includes('.ngrok-free.dev') ? { 'ngrok-skip-browser-warning': 'true' } : {};
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
 
   let response: Response;
   try {
-    response = await fetch(`${assertApiBaseUrl()}${path}`, {
+    response = await fetch(`${apiBaseUrl}${path}`, {
       ...requestOptions,
       signal: abortController.signal,
       headers: {
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
+        ...ngrokHeaders,
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -131,15 +134,18 @@ export async function apiUpload<T>(path: string, file: UploadFile, session?: Ses
   const form = new FormData();
   form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
   const abortController = new AbortController();
+  const apiBaseUrl = assertApiBaseUrl();
+  const ngrokHeaders: Record<string, string> = apiBaseUrl.includes('.ngrok-free.dev') ? { 'ngrok-skip-browser-warning': 'true' } : {};
   const timeout = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(`${assertApiBaseUrl()}${path}`, {
+    response = await fetch(`${apiBaseUrl}${path}`, {
       method: 'POST',
       signal: abortController.signal,
       headers: {
         Accept: 'application/json',
         ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
+        ...ngrokHeaders,
       },
       body: form,
     });
