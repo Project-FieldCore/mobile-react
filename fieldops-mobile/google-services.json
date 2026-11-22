@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "353410268468",
+    "project_id": "fieldcore-ca6ac",
+    "storage_bucket": "fieldcore-ca6ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:353410268468:android:5ad90cf46ea8e340603961",
+        "android_client_info": {
+          "package_name": "com.projectfieldcore.fieldops"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLDIJ2EwZ99lptHyLzStUOXpJ4ZNWdbj4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

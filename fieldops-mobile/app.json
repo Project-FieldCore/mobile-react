@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.projectfieldcore.fieldops",
+      "googleServicesFile": "./google-services.json",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#152A4E",
