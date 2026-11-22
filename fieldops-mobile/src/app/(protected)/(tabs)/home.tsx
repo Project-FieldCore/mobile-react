@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
+import { disableAssignmentPush, enableAssignmentPush, isPushOptedIn, syncAssignmentPushRegistration } from '@/features/push/pushRegistration';
 import { getPendingOperations } from '@/features/inspections/draftStore';
 import {
   buildHomeChip,
@@ -96,12 +97,37 @@ function homeChipBorder(tone: HomeChipModel['tone']): string {
 export default function HomeScreen() {
   const signOut = useAuthStore((state) => state.signOut);
   const [syncChip, setSyncChip] = useState<HomeChipModel | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
 
   useFocusEffect(useCallback(() => {
     void getPendingOperations()
       .then((operations) => setSyncChip(buildHomeChip(countByStatus(operations))))
       .catch(() => setSyncChip(null));
+    void isPushOptedIn().then(setPushEnabled).catch(() => setPushEnabled(false));
+    void syncAssignmentPushRegistration().catch(() => undefined);
   }, []));
+
+  const togglePush = async () => {
+    setPushLoading(true);
+    setPushMessage(null);
+    try {
+      if (pushEnabled) {
+        await disableAssignmentPush();
+        setPushEnabled(false);
+        setPushMessage('Alertas de novas atribuições desativados.');
+      } else {
+        await enableAssignmentPush();
+        setPushEnabled(true);
+        setPushMessage('Alertas de novas atribuições ativados neste aparelho.');
+      }
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : 'Não foi possível atualizar os alertas.');
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   const openSync = (autoSync: boolean) => {
     router.push({
@@ -177,6 +203,23 @@ export default function HomeScreen() {
             </Card>
           </Pressable>
         ) : null}
+
+        <Card style={styles.pushCard}>
+          <View style={styles.pushHeader}>
+            <Ionicons name="notifications-outline" size={22} color={colors.navy} />
+            <View style={styles.pushText}>
+              <Text style={styles.pushTitle}>Novas atribuições</Text>
+              <Text style={styles.pushDescription}>Receba um aviso quando uma inspeção for atribuída a você.</Text>
+            </View>
+          </View>
+          <Button
+            label={pushEnabled ? 'Desativar alertas' : 'Ativar alertas'}
+            variant="secondary"
+            onPress={() => void togglePush()}
+            loading={pushLoading}
+          />
+          {pushMessage ? <Text style={styles.pushMessage}>{pushMessage}</Text> : null}
+        </Card>
 
         <Text style={styles.sectionTitle}>Próximas inspeções</Text>
         <View style={styles.list}>
@@ -280,6 +323,12 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
+  pushCard: { gap: spacing.sm },
+  pushHeader: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+  pushText: { flex: 1, gap: 2 },
+  pushTitle: { ...typography.subtitle, color: colors.text },
+  pushDescription: { ...typography.caption, color: colors.textMuted, lineHeight: 18 },
+  pushMessage: { ...typography.caption, color: colors.textMuted, lineHeight: 18 },
   statCard: {
     flex: 1,
     alignItems: 'center',
