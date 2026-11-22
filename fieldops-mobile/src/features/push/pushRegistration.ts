@@ -58,7 +58,20 @@ export async function enableAssignmentPush(): Promise<void> {
   const granted = permissions.granted || (permissions.canAskAgain && (await Notifications.requestPermissionsAsync()).granted);
   if (!granted) throw new Error('Permissão de notificações não concedida.');
 
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId: easProjectId })).data;
+  let token: string;
+  try {
+    token = (await Notifications.getExpoPushTokenAsync({ projectId: easProjectId })).data;
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('removed from Expo Go')) {
+        throw new Error('Para receber push remoto, instale o APK de teste. O Expo Go não oferece esse recurso.');
+      }
+      if (error.message.includes('Firebase Messaging instance')) {
+        throw new Error('Push remoto ainda não foi configurado no Firebase para o Android.');
+      }
+    }
+    throw error;
+  }
   await register(token, true);
   await saveOptIn({ token, enabled: true });
 }
