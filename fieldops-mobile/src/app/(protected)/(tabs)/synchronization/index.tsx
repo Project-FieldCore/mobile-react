@@ -8,6 +8,7 @@ import { useAuthStore } from '@/features/auth/store';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
 import { getLastPullServerTime, getLastSyncAt } from '@/features/inspections/syncCursorStore';
 import { runMobileSync } from '@/features/inspections/runMobileSync';
+import { scheduleNotificationTest } from '@/features/inspections/deadlineNotifications';
 import {
   composeSyncFailureBanner,
   composeSyncSuccessBanner,
@@ -32,6 +33,8 @@ export default function SynchronizationScreen() {
   const [lastSyncLabel, setLastSyncLabel] = useState('Ainda não sincronizado');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [testingNotification, setTestingNotification] = useState(false);
+  const [notificationTestMessage, setNotificationTestMessage] = useState<string | null>(null);
 
   const loadPending = useCallback(async (options?: { quiet?: boolean }) => {
     if (!options?.quiet) {
@@ -80,6 +83,19 @@ export default function SynchronizationScreen() {
     await simulateSyncOutcome(status);
     await loadPending({ quiet: true });
     setSyncing(false);
+  };
+
+  const testNotification = async () => {
+    setTestingNotification(true);
+    setNotificationTestMessage(null);
+    try {
+      await scheduleNotificationTest();
+      setNotificationTestMessage('Teste agendado. O aviso aparecerá em 10 segundos.');
+    } catch (error) {
+      setNotificationTestMessage(error instanceof Error ? error.message : 'Não foi possível agendar o teste.');
+    } finally {
+      setTestingNotification(false);
+    }
   };
 
   useFocusEffect(useCallback(() => {
@@ -244,6 +260,13 @@ export default function SynchronizationScreen() {
               onPress={() => void simulate('CONFLICT')}
               disabled={counts.total === 0}
             />
+            <Button
+              label="Testar notificação local"
+              variant="secondary"
+              onPress={() => void testNotification()}
+              loading={testingNotification}
+            />
+            {notificationTestMessage ? <Text style={styles.devMeta}>{notificationTestMessage}</Text> : null}
           </View>
         ) : null}
       </ScrollView>

@@ -1,4 +1,3 @@
-import { AndroidImportance } from 'expo-notifications';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -6,7 +5,6 @@ import type { Inspection } from './mockRepository';
 import { planDeadlineReminders } from './deadlineNotificationPlan';
 
 const NOTIFICATION_KIND = 'inspection-deadline';
-const CHANNEL_ID = 'inspection-deadlines';
 let schedulingPromise: Promise<void> | null = null;
 
 Notifications.setNotificationHandler({
@@ -28,17 +26,26 @@ export function scheduleDeadlineNotifications(inspections: Inspection[]): Promis
   return schedulingPromise;
 }
 
+/** Disponível somente pelos cenários de desenvolvimento para validar o canal nativo. */
+export async function scheduleNotificationTest(): Promise<void> {
+  if (Platform.OS === 'web') throw new Error('Notificações locais não estão disponíveis no navegador.');
+  await ensureNotificationPermission();
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Teste de notificação local',
+      body: 'O aviso local do FieldOps está funcionando.',
+      sound: 'default',
+      data: { kind: NOTIFICATION_KIND, test: true },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: new Date(Date.now() + 10_000),
+    },
+  });
+}
+
 async function syncDeadlineNotifications(inspections: Inspection[]) {
-  const permissions = await Notifications.getPermissionsAsync();
-  const granted = permissions.granted || (permissions.canAskAgain && (await Notifications.requestPermissionsAsync()).granted);
-  if (!granted) return;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: 'Prazos de inspeção', importance: AndroidImportance.HIGH,
-    });
-  }
-
+  await ensureNotificationPermission();
   const planned = planDeadlineReminders(inspections);
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = scheduled.filter((notification) => notification.content.data?.kind === NOTIFICATION_KIND);
@@ -51,7 +58,13 @@ async function syncDeadlineNotifications(inspections: Inspection[]) {
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: reminder.scheduledFor,
-      channelId: CHANNEL_ID,
     },
   })));
+}
+
+async function ensureNotificationPermission() {
+  const permissions = await Notifications.getPermissionsAsync();
+  const granted = permissions.granted || (permissions.canAskAgain && (await Notifications.requestPermissionsAsync()).granted);
+  if (!granted) throw new Error('Permissão de notificações não concedida.');
+
 }

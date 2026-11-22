@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
@@ -31,15 +31,15 @@ export default function InspectionsScreen() {
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [priority, setPriority] = useState<PriorityFilter>('ALL');
   const [when, setWhen] = useState<DateFilter>('ALL');
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(false);
     listInspections().then((items) => {
       setInspections(items);
       void scheduleDeadlineNotifications(items);
     }).catch(() => setError(true)).finally(() => setLoading(false));
-  };
-  useEffect(() => { const timer = setTimeout(load, 0); return () => clearTimeout(timer); }, []);
+  }, []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
   useFocusEffect(useCallback(() => {
     void getPendingOperations().then(setOperations).catch(() => setOperations([]));
   }, []));
