@@ -3,7 +3,7 @@
  * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
  */
 import { captureDeviceLocation } from './deviceLocation';
-import { enqueueInspectionForSync, getInspectionDraft, saveInspectionLocation } from './draftStore';
+import { enqueueInspectionForSync, getInspectionDraft, removeDeliveredInspectionOperations, saveInspectionLocation } from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
 import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
@@ -288,6 +288,7 @@ export async function completeInspection(id: string): Promise<{ coordinatesSent:
     const location = await captureDeviceLocation();
     if (location) await saveInspectionLocation(id, location);
     await completeAssignedInspection(id, current?.version ?? 0, answers, location);
+    await removeDeliveredInspectionOperations(id);
     return { coordinatesSent: Boolean(location) };
   }
   const inspection = inspections.find((item) => item.id === id);

@@ -499,6 +499,21 @@ export async function removeSyncOperation(id: string): Promise<void> {
   await database.runAsync('DELETE FROM sync_operations WHERE id = ?', id);
 }
 
+/**
+ * A conclusao online ja envia as respostas e a localizacao no mesmo request.
+ * Remover essas operacoes evita que a fila tente reenviar dados de uma
+ * inspecao que ja foi submetida ao servidor.
+ */
+export async function removeDeliveredInspectionOperations(inspectionId: string): Promise<void> {
+  const deliveredTypes = new Set(['ANSWERS', 'LOCATION']);
+  const operations = await getPendingOperations();
+  await Promise.all(
+    operations
+      .filter((operation) => operation.inspectionId === inspectionId && deliveredTypes.has(operation.operationType ?? ''))
+      .map((operation) => removeSyncOperation(operation.id)),
+  );
+}
+
 export async function retryFailedOperations(): Promise<number> {
   const failed = (await getPendingOperations()).filter((operation) => canRetry(operation.status));
   await Promise.all(failed.map((operation) => updateSyncOperation(operation.id, 'PENDING', undefined, false)));
