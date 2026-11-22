@@ -40,6 +40,7 @@
           "locationWhenInUsePermission": "Permita que o FieldOps registre sua localização ao iniciar a inspeção."
         }
       ],
+      "expo-notifications",
       "expo-status-bar",
       "expo-font"
     ],

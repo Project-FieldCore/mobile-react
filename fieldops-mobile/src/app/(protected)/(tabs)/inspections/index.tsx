@@ -12,6 +12,7 @@ import {
 } from '@/features/inspections/inspectionReviewUi';
 import { listInspections, type Inspection, type InspectionPriority, type InspectionStatus } from '@/features/inspections/mockRepository';
 import { listSyncIndicatorForInspection } from '@/features/inspections/syncStatusUi';
+import { scheduleDeadlineNotifications } from '@/features/inspections/deadlineNotifications';
 
 type DateFilter = 'ALL' | 'TODAY' | 'UPCOMING';
 
@@ -33,7 +34,10 @@ export default function InspectionsScreen() {
   const load = () => {
     setLoading(true);
     setError(false);
-    listInspections().then(setInspections).catch(() => setError(true)).finally(() => setLoading(false));
+    listInspections().then((items) => {
+      setInspections(items);
+      void scheduleDeadlineNotifications(items);
+    }).catch(() => setError(true)).finally(() => setLoading(false));
   };
   useEffect(() => { const timer = setTimeout(load, 0); return () => clearTimeout(timer); }, []);
   useFocusEffect(useCallback(() => {
