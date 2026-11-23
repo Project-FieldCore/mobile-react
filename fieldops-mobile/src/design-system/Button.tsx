@@ -3,6 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, gradients, radius, shadows, spacing, typography } from './tokens';
+import { useAppTheme } from '@/features/theme/ThemeProvider';
 
 type ButtonVariant = 'primary' | 'secondary' | 'light' | 'dark';
 
@@ -23,6 +24,7 @@ export function Button({
   loading,
   disabled,
 }: ButtonProps) {
+  const { theme } = useAppTheme();
   const isDisabled = disabled || loading;
 
   if (variant === 'secondary') {
@@ -30,7 +32,7 @@ export function Button({
       <Pressable
         onPress={onPress}
         disabled={isDisabled}
-        style={[styles.base, styles.secondary, isDisabled && styles.disabled]}
+        style={[styles.base, styles.secondary, theme === 'dark' && styles.secondaryDark, isDisabled && styles.disabled]}
       >
         {loading ? (
           <ActivityIndicator color={colors.primary} />
@@ -115,6 +117,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  secondaryDark: { backgroundColor: '#182338', borderColor: '#465a78' },
   light: {
     backgroundColor: colors.surface,
   },

@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
+import { useAppTheme } from '@/features/theme/ThemeProvider';
 import { disableAssignmentPush, enableAssignmentPush, isPushOptedIn, syncAssignmentPushRegistration } from '@/features/push/pushRegistration';
 import { getPendingOperations } from '@/features/inspections/draftStore';
 import {
@@ -96,6 +97,7 @@ function homeChipBorder(tone: HomeChipModel['tone']): string {
 
 export default function HomeScreen() {
   const signOut = useAuthStore((state) => state.signOut);
+  const { theme, toggleTheme } = useAppTheme();
   const [syncChip, setSyncChip] = useState<HomeChipModel | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -137,7 +139,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, theme === 'dark' && styles.containerDark]}>
       <LinearGradient
         colors={gradients.brand}
         start={{ x: 0, y: 0 }}
@@ -149,6 +151,10 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Olá, técnico!</Text>
             <Text style={styles.subtitle}>Aqui está o resumo do seu dia</Text>
           </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Alternar tema" onPress={toggleTheme} style={styles.themeButton}>
+            <Ionicons name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color={colors.textOnDark} />
+            <Text style={styles.themeButtonText}>{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sair da conta"
@@ -266,6 +272,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  containerDark: { backgroundColor: '#0D1626' },
   header: {
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
@@ -282,6 +289,8 @@ const styles = StyleSheet.create({
   logoutButton: {
     padding: spacing.sm,
   },
+  themeButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
+  themeButtonText: { ...typography.caption, color: colors.textOnDark },
   greeting: {
     ...typography.title,
     color: colors.textOnDark,
