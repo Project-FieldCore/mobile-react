@@ -205,6 +205,7 @@ export async function completeAssignedInspection(
   version: number,
   answers: { itemId: string; valueText?: string; conformity?: string; observation?: string }[],
   location?: { latitude: number; longitude: number },
+  signature?: { contentType: 'image/png'; dataBase64: string },
 ): Promise<void> {
   await apiRequest(`/inspections/my/${id}/complete`, {
     method: 'POST',
@@ -215,6 +216,7 @@ export async function completeAssignedInspection(
       latitude: location?.latitude,
       longitude: location?.longitude,
       answers,
+      signature,
     },
   });
 }

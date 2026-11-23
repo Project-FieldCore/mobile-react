@@ -99,14 +99,14 @@ describe('executionApi (PBI-0065.3)', () => {
 
     await startAssignedInspection('inspection-1', '2026-11-10T14:00:00.000Z', { latitude: -23.5, longitude: -47.4 });
     await uploadItemEvidence('inspection-1', 'item-1', 'file:///photo.jpg');
-    await completeAssignedInspection('inspection-1', 4, [{ itemId: 'item-1', valueText: 'ok' }], { latitude: -23.5, longitude: -47.4 });
+    await completeAssignedInspection('inspection-1', 4, [{ itemId: 'item-1', valueText: 'ok' }], { latitude: -23.5, longitude: -47.4 }, { contentType: 'image/png', dataBase64: 'c2lnbmF0dXJl' });
 
     expect(mockedApiRequest).toHaveBeenCalledWith('/inspections/my/inspection-1/start', expect.objectContaining({
       method: 'POST', session, body: expect.objectContaining({ latitude: -23.5, longitude: -47.4 }),
     }));
     expect(mockedApiUpload).toHaveBeenCalledWith('/inspections/my/inspection-1/items/item-1/evidence', expect.any(Object), session);
     expect(mockedApiRequest).toHaveBeenCalledWith('/inspections/my/inspection-1/complete', expect.objectContaining({
-      method: 'POST', session, body: expect.objectContaining({ version: 4, answers: [{ itemId: 'item-1', valueText: 'ok' }] }),
+      method: 'POST', session, body: expect.objectContaining({ version: 4, answers: [{ itemId: 'item-1', valueText: 'ok' }], signature: { contentType: 'image/png', dataBase64: 'c2lnbmF0dXJl' } }),
     }));
   });
 });

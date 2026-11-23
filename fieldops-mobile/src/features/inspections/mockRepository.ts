@@ -269,7 +269,7 @@ export async function startInspection(id: string): Promise<void> {
   await persistInspection(inspection);
 }
 
-export async function completeInspection(id: string): Promise<{ coordinatesSent: boolean }> {
+export async function completeInspection(id: string, signature?: { contentType: 'image/png'; dataBase64: string }): Promise<{ coordinatesSent: boolean }> {
   if (usesExecutionApi()) {
     const current = await fetchInspection(id);
     const draft = getInspectionDraft(id);
@@ -287,7 +287,7 @@ export async function completeInspection(id: string): Promise<{ coordinatesSent:
     }
     const location = await captureDeviceLocation();
     if (location) await saveInspectionLocation(id, location);
-    await completeAssignedInspection(id, current?.version ?? 0, answers, location);
+    await completeAssignedInspection(id, current?.version ?? 0, answers, location, signature);
     await removeDeliveredInspectionOperations(id);
     return { coordinatesSent: Boolean(location) };
   }
