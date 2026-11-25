@@ -29,8 +29,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   status: 'loading',
   session: null,
   hydrate: async () => {
-    const session = await getSession();
-    set({ session, status: session ? 'authenticated' : 'unauthenticated' });
+    try {
+      const session = await getSession();
+      set({ session, status: session ? 'authenticated' : 'unauthenticated' });
+    } catch {
+      // A falha ao ler o armazenamento seguro não pode prender o app na splash.
+      set({ session: null, status: 'unauthenticated' });
+    }
   },
   signIn: async (email, password) => {
     const session = await login({ email, password });
