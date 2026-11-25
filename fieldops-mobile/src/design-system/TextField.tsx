@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from './tokens';
 import { useThemeColors } from '@/features/theme/ThemeProvider';
@@ -18,9 +18,11 @@ export function TextField({
   style,
   onFocus,
   onBlur,
+  secureTextEntry,
   ...inputProps
 }: TextFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const themeColors = useThemeColors();
 
   return (
@@ -55,7 +57,23 @@ export function TextField({
             onBlur?.(event);
           }}
           {...inputProps}
+          secureTextEntry={secureTextEntry && !isPasswordVisible}
         />
+        {secureTextEntry ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+            hitSlop={8}
+            onPress={() => setIsPasswordVisible((visible) => !visible)}
+            style={styles.visibilityButton}
+          >
+            <Ionicons
+              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color={isFocused ? themeColors.navy : themeColors.textMuted}
+            />
+          </Pressable>
+        ) : null}
       </View>
       {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
     </View>
@@ -89,6 +107,10 @@ const styles = StyleSheet.create({
     ...typography.body,
     flex: 1,
     paddingVertical: spacing.md,
+  },
+  visibilityButton: {
+    marginLeft: spacing.sm,
+    padding: spacing.xs,
   },
   errorMessage: {
     ...typography.caption,
