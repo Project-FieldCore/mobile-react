@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   BrandLogo,
@@ -30,7 +30,8 @@ export default function VerifyCodeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <LinearGradient
         colors={gradients.brand}
         start={{ x: 0, y: 0 }}
@@ -40,7 +41,6 @@ export default function VerifyCodeScreen() {
         <BrandLogo width={230} />
       </LinearGradient>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.card}>
           <Text style={styles.greeting}>Verifique seu e-mail</Text>
           <Text style={styles.subtitle}>
@@ -73,8 +73,8 @@ export default function VerifyCodeScreen() {
             Voltar
           </Text>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -84,10 +84,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   header: {
-    flex: 1,
+    minHeight: 300,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  scrollContent: { flexGrow: 1 },
   card: {
     marginTop: -32,
     backgroundColor: colors.surface,
