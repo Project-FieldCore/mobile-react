@@ -2,6 +2,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from './Button';
 import { colors, spacing, typography } from './tokens';
+import { useThemeColors } from '@/features/theme/ThemeProvider';
 
 type StateViewProps = {
   title: string;
@@ -9,19 +10,21 @@ type StateViewProps = {
 };
 
 export function LoadingState({ title = 'Carregando...' }: Partial<StateViewProps>) {
+  const themeColors = useThemeColors();
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={colors.primary} size="large" />
-      <Text style={styles.title}>{title}</Text>
+      <ActivityIndicator color={themeColors.primary} size="large" />
+      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
     </View>
   );
 }
 
 export function EmptyState({ title, description }: StateViewProps) {
+  const themeColors = useThemeColors();
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
+      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
+      {description ? <Text style={[styles.description, { color: themeColors.textMuted }]}>{description}</Text> : null}
     </View>
   );
 }
@@ -31,10 +34,11 @@ type ErrorStateProps = StateViewProps & {
 };
 
 export function ErrorState({ title, description, onRetry }: ErrorStateProps) {
+  const themeColors = useThemeColors();
   return (
     <View style={styles.container}>
       <Text style={[styles.title, styles.errorTitle]}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
+      {description ? <Text style={[styles.description, { color: themeColors.textMuted }]}>{description}</Text> : null}
       {onRetry ? (
         <View style={styles.retryButton}>
           <Button label="Tentar novamente" onPress={onRetry} variant="secondary" />
@@ -54,7 +58,6 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.subtitle,
-    color: colors.text,
     textAlign: 'center',
   },
   errorTitle: {
@@ -62,7 +65,6 @@ const styles = StyleSheet.create({
   },
   description: {
     ...typography.body,
-    color: colors.textMuted,
     textAlign: 'center',
   },
   retryButton: {

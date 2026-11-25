@@ -98,6 +98,10 @@ function homeChipBorder(tone: HomeChipModel['tone']): string {
 export default function HomeScreen() {
   const signOut = useAuthStore((state) => state.signOut);
   const { theme, toggleTheme } = useAppTheme();
+  const dark = theme === 'dark';
+  const text = dark ? '#F4F7FB' : colors.text;
+  const muted = dark ? '#AAB9CE' : colors.textMuted;
+  const icon = dark ? '#D9E4F5' : colors.navy;
   const [syncChip, setSyncChip] = useState<HomeChipModel | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -177,8 +181,8 @@ export default function HomeScreen() {
               <View style={[styles.statIcon, { backgroundColor: `${stat.color}1A` }]}>
                 <Ionicons name={stat.icon} size={20} color={stat.color} />
               </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+              <Text style={[styles.statValue, { color: text }]}>{stat.value}</Text>
+              <Text style={[styles.statLabel, { color: muted }]}>{stat.label}</Text>
             </Card>
           ))}
         </View>
@@ -198,7 +202,7 @@ export default function HomeScreen() {
                 />
                 <View style={styles.syncChipText}>
                   <Text style={[styles.syncChipTitle, { color: homeChipBorder(syncChip.tone) }]}>{syncChip.title}</Text>
-                  {syncChip.subtitle ? <Text style={styles.syncChipSubtitle}>{syncChip.subtitle}</Text> : null}
+                  {syncChip.subtitle ? <Text style={[styles.syncChipSubtitle, { color: muted }]}>{syncChip.subtitle}</Text> : null}
                 </View>
               </View>
               <Button
@@ -212,10 +216,10 @@ export default function HomeScreen() {
 
         <Card style={styles.pushCard}>
           <View style={styles.pushHeader}>
-            <Ionicons name="notifications-outline" size={22} color={colors.navy} />
+            <Ionicons name="notifications-outline" size={22} color={icon} />
             <View style={styles.pushText}>
-              <Text style={styles.pushTitle}>Novas atribuições</Text>
-              <Text style={styles.pushDescription}>Receba um aviso quando uma inspeção for atribuída a você.</Text>
+              <Text style={[styles.pushTitle, { color: text }]}>Novas atribuições</Text>
+              <Text style={[styles.pushDescription, { color: muted }]}>Receba um aviso quando uma inspeção for atribuída a você.</Text>
             </View>
           </View>
           <Button
@@ -224,10 +228,10 @@ export default function HomeScreen() {
             onPress={() => void togglePush()}
             loading={pushLoading}
           />
-          {pushMessage ? <Text style={styles.pushMessage}>{pushMessage}</Text> : null}
+          {pushMessage ? <Text style={[styles.pushMessage, { color: muted }]}>{pushMessage}</Text> : null}
         </Card>
 
-        <Text style={styles.sectionTitle}>Próximas inspeções</Text>
+        <Text style={[styles.sectionTitle, { color: text }]}>Próximas inspeções</Text>
         <View style={styles.list}>
           {UPCOMING.map((inspection) => (
             <Card key={inspection.id} style={styles.inspectionCard}>
@@ -239,7 +243,7 @@ export default function HomeScreen() {
               />
               <View style={styles.inspectionBody}>
                 <View style={styles.inspectionHeader}>
-                  <Text style={styles.inspectionClient}>{inspection.client}</Text>
+                  <Text style={[styles.inspectionClient, { color: text }]}>{inspection.client}</Text>
                   <View
                     style={[
                       styles.priorityBadge,
@@ -253,10 +257,10 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.inspectionEquipment}>{inspection.equipment}</Text>
+                <Text style={[styles.inspectionEquipment, { color: muted }]}>{inspection.equipment}</Text>
                 <View style={styles.inspectionFooter}>
-                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                  <Text style={styles.inspectionTime}>{inspection.time}</Text>
+                  <Ionicons name="time-outline" size={14} color={muted} />
+                  <Text style={[styles.inspectionTime, { color: muted }]}>{inspection.time}</Text>
                 </View>
               </View>
             </Card>

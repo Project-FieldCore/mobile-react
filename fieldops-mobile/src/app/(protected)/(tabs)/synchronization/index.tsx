@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
+import { useThemeColors } from '@/features/theme/ThemeProvider';
 import { getPendingOperations, retryFailedOperations, simulateSyncOutcome, type PendingOperation } from '@/features/inspections/draftStore';
 import { getLastPullServerTime, getLastSyncAt } from '@/features/inspections/syncCursorStore';
 import { runMobileSync } from '@/features/inspections/runMobileSync';
@@ -23,6 +24,7 @@ import {
 } from '@/features/inspections/syncStatusUi';
 
 export default function SynchronizationScreen() {
+  const themeColors = useThemeColors();
   const params = useLocalSearchParams<{ sync?: string }>();
   const signOut = useAuthStore((state) => state.signOut);
   const autoSyncConsumed = useRef(false);
@@ -128,7 +130,7 @@ export default function SynchronizationScreen() {
         : styles.error;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
         <Text style={styles.title}>Sincronização</Text>
         <Text style={styles.subtitle}>Envio da outbox e download incremental por cursor.</Text>
@@ -136,16 +138,16 @@ export default function SynchronizationScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Card style={styles.card}>
-          <Text style={styles.countValue}>{counts.total}</Text>
-          <Text style={styles.label}>
+          <Text style={[styles.countValue, { color: themeColors.navy }]}>{counts.total}</Text>
+          <Text style={[styles.label, { color: themeColors.textMuted }]}>
             {counts.total === 1 ? 'operação aguardando envio' : 'operações aguardando envio'}
           </Text>
         </Card>
 
         <Card style={styles.card}>
-          <Text style={styles.label}>Última sincronização</Text>
-          <Text style={styles.lastSync}>{lastSyncLabel}</Text>
-          <Text style={styles.value}>
+          <Text style={[styles.label, { color: themeColors.textMuted }]}>Última sincronização</Text>
+          <Text style={[styles.lastSync, { color: themeColors.text }]}>{lastSyncLabel}</Text>
+          <Text style={[styles.value, { color: themeColors.text }]}>
             {banner?.kind === 'syncing'
               ? banner.message
               : 'Toque em sincronizar para enviar e baixar mudanças.'}
@@ -159,15 +161,15 @@ export default function SynchronizationScreen() {
           />
         ) : (
           <Card style={styles.card}>
-            <Text style={styles.label}>Detalhamento da fila</Text>
-            <Text style={styles.value}>Pendentes: {counts.pending}</Text>
-            <Text style={styles.value}>Enviando: {counts.syncing}</Text>
-            <Text style={styles.value}>Falhas: {counts.failed}</Text>
-            <Text style={styles.value}>Conflitos: {counts.conflict}</Text>
+            <Text style={[styles.label, { color: themeColors.textMuted }]}>Detalhamento da fila</Text>
+            <Text style={[styles.value, { color: themeColors.text }]}>Pendentes: {counts.pending}</Text>
+            <Text style={[styles.value, { color: themeColors.text }]}>Enviando: {counts.syncing}</Text>
+            <Text style={[styles.value, { color: themeColors.text }]}>Falhas: {counts.failed}</Text>
+            <Text style={[styles.value, { color: themeColors.text }]}>Conflitos: {counts.conflict}</Text>
             {operations.map((operation) => {
               const row = (
                 <>
-                  <Text style={styles.operationTitle}>
+                  <Text style={[styles.operationTitle, { color: themeColors.text }]}>
                     {operationTypeLabel(operation.operationType)}
                     {__DEV__ && operation.operationType ? ` (${operation.operationType})` : ''}
                     {' · '}
@@ -175,7 +177,7 @@ export default function SynchronizationScreen() {
                       {operationStatusLabel(operation.status)}
                     </Text>
                   </Text>
-                  <Text style={styles.operationMeta}>
+                  <Text style={[styles.operationMeta, { color: themeColors.textMuted }]}>
                     {new Date(operation.createdAt).toLocaleString('pt-BR')}
                   </Text>
                   {(operation.status === 'FAILED' || operation.status === 'CONFLICT') ? (
@@ -187,7 +189,7 @@ export default function SynchronizationScreen() {
                     <Text style={styles.conflictHint}>Toque para analisar</Text>
                   ) : null}
                   {__DEV__ ? (
-                    <Text style={styles.devMeta}>
+                    <Text style={[styles.devMeta, { color: themeColors.textMuted }]}>
                       DEV: {operation.id.slice(0, 8)}… · Tentativas: {operation.attempts}
                       {operation.lastError ? ` · ${operation.lastError.slice(0, 200)}` : ''}
                     </Text>
@@ -201,7 +203,7 @@ export default function SynchronizationScreen() {
                     key={operation.id}
                     accessibilityRole="button"
                     accessibilityLabel="Analisar conflito"
-                    style={styles.operationRow}
+                    style={[styles.operationRow, { borderTopColor: themeColors.border }]}
                     onPress={() => router.push({
                       pathname: '/synchronization/conflict/[operationId]',
                       params: { operationId: operation.id },
@@ -213,7 +215,7 @@ export default function SynchronizationScreen() {
                 );
               }
 
-              return <View key={operation.id} style={styles.operationRow}>{row}</View>;
+              return <View key={operation.id} style={[styles.operationRow, { borderTopColor: themeColors.border }]}>{row}</View>;
             })}
           </Card>
         )}
@@ -228,7 +230,7 @@ export default function SynchronizationScreen() {
           />
         ) : null}
 
-        <Text style={styles.warning}>
+        <Text style={[styles.warning, { color: themeColors.textMuted }]}>
           Ordem: push da outbox, depois pull por cursor. O cursor só avança depois de gravar as mudanças localmente.
         </Text>
 
@@ -246,8 +248,8 @@ export default function SynchronizationScreen() {
         ) : null}
 
         {__DEV__ ? (
-          <View style={styles.developmentActions}>
-            <Text style={styles.developmentLabel}>Cenários de desenvolvimento</Text>
+          <View style={[styles.developmentActions, { borderColor: themeColors.border }]}>
+            <Text style={[styles.developmentLabel, { color: themeColors.textMuted }]}>Cenários de desenvolvimento</Text>
             <Button
               label="Simular falha de envio"
               variant="secondary"
@@ -266,7 +268,7 @@ export default function SynchronizationScreen() {
               onPress={() => void testNotification()}
               loading={testingNotification}
             />
-            {notificationTestMessage ? <Text style={styles.devMeta}>{notificationTestMessage}</Text> : null}
+            {notificationTestMessage ? <Text style={[styles.devMeta, { color: themeColors.textMuted }]}>{notificationTestMessage}</Text> : null}
           </View>
         ) : null}
       </ScrollView>

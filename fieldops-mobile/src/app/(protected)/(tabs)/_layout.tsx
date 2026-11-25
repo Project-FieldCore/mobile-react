@@ -1,14 +1,16 @@
 import { Tabs } from 'expo-router';
 
-import { colors } from '@/design-system';
+import { useAppTheme } from '@/features/theme/ThemeProvider';
 
 export default function TabLayout() {
+  const { theme, colors } = useAppTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: theme === 'dark' ? '#F4F7FB' : colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: theme === 'dark' ? { backgroundColor: '#182338', borderTopColor: '#253650' } : undefined,
       }}
     >
       <Tabs.Screen name="home" options={{ title: 'Início' }} />

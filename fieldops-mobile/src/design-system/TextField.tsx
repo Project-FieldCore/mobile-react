@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from './tokens';
+import { useThemeColors } from '@/features/theme/ThemeProvider';
 
 type TextFieldProps = TextInputProps & {
   label?: string;
@@ -20,14 +21,17 @@ export function TextField({
   ...inputProps
 }: TextFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const themeColors = useThemeColors();
 
   return (
     <View style={styles.container}>
-      {label ? <Text style={styles.label}>{label}</Text> : null}
+      {label ? <Text style={[styles.label, { color: themeColors.textMuted }]}>{label}</Text> : null}
       <View
         style={[
           styles.inputWrapper,
+          { backgroundColor: themeColors.surfaceMuted },
           isFocused && styles.inputWrapperFocused,
+          isFocused && { borderColor: themeColors.navy, backgroundColor: themeColors.surface },
           errorMessage ? styles.inputWrapperError : null,
         ]}
       >
@@ -35,13 +39,13 @@ export function TextField({
           <Ionicons
             name={icon}
             size={18}
-            color={isFocused ? colors.navy : colors.textMuted}
+            color={isFocused ? themeColors.navy : themeColors.textMuted}
             style={styles.icon}
           />
         ) : null}
         <TextInput
-          style={[styles.input, style]}
-          placeholderTextColor={colors.textMuted}
+          style={[styles.input, { color: themeColors.text }, style]}
+          placeholderTextColor={themeColors.textMuted}
           onFocus={(event) => {
             setIsFocused(true);
             onFocus?.(event);
@@ -64,20 +68,16 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.caption,
-    color: colors.textMuted,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
     borderWidth: 1.5,
     borderColor: 'transparent',
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
   },
   inputWrapperFocused: {
-    borderColor: colors.navy,
-    backgroundColor: colors.surface,
   },
   inputWrapperError: {
     borderColor: colors.danger,
@@ -87,7 +87,6 @@ const styles = StyleSheet.create({
   },
   input: {
     ...typography.body,
-    color: colors.text,
     flex: 1,
     paddingVertical: spacing.md,
   },

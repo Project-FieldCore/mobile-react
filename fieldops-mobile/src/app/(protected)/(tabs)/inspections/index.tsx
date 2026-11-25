@@ -1,102 +1,23 @@
-import { router, useFocusEffect } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-
 import { Card, colors, EmptyState, ErrorState, LoadingState, radius, spacing, typography } from '@/design-system';
+import { scheduleDeadlineNotifications } from '@/features/inspections/deadlineNotifications';
 import { getPendingOperations, type PendingOperation } from '@/features/inspections/draftStore';
-import {
-  inspectionStatusColor,
-  inspectionStatusLabel,
-} from '@/features/inspections/inspectionReviewUi';
+import { inspectionStatusColor, inspectionStatusLabel } from '@/features/inspections/inspectionReviewUi';
 import { listInspections, type Inspection, type InspectionPriority, type InspectionStatus } from '@/features/inspections/mockRepository';
 import { listSyncIndicatorForInspection } from '@/features/inspections/syncStatusUi';
-import { scheduleDeadlineNotifications } from '@/features/inspections/deadlineNotifications';
-
-type DateFilter = 'ALL' | 'TODAY' | 'UPCOMING';
-
-// The inspection list belongs to the tab navigator; detail screens are stacked above it.
-
-type StatusFilter = 'ALL' | InspectionStatus;
-type PriorityFilter = 'ALL' | InspectionPriority;
+import { useThemeColors } from '@/features/theme/ThemeProvider';
+type DateFilter = 'ALL' | 'TODAY' | 'UPCOMING'; type StatusFilter = 'ALL' | InspectionStatus; type PriorityFilter = 'ALL' | InspectionPriority;
 const statusFilters: { value: StatusFilter; label: string }[] = [{ value: 'ALL', label: 'Todas' }, { value: 'ASSIGNED', label: 'Atribuídas' }, { value: 'IN_PROGRESS', label: 'Em andamento' }, { value: 'SUBMITTED', label: 'Enviadas' }];
 const priorityFilters: { value: PriorityFilter; label: string }[] = [{ value: 'ALL', label: 'Todas prioridades' }, { value: 'HIGH', label: 'Alta' }, { value: 'MEDIUM', label: 'Média' }, { value: 'LOW', label: 'Baixa' }];
-
-export default function InspectionsScreen() {
-  const [inspections, setInspections] = useState<Inspection[]>([]);
-  const [operations, setOperations] = useState<PendingOperation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [status, setStatus] = useState<StatusFilter>('ALL');
-  const [priority, setPriority] = useState<PriorityFilter>('ALL');
-  const [when, setWhen] = useState<DateFilter>('ALL');
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(false);
-    listInspections().then((items) => {
-      setInspections(items);
-      void scheduleDeadlineNotifications(items);
-    }).catch(() => setError(true)).finally(() => setLoading(false));
-  }, []);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-  useFocusEffect(useCallback(() => {
-    void getPendingOperations().then(setOperations).catch(() => setOperations([]));
-  }, []));
-  const filtered = useMemo(() => inspections.filter((item) => (status === 'ALL' || item.status === status) && (priority === 'ALL' || item.priority === priority) && matchesDate(item, when)), [inspections, priority, status, when]);
-  if (loading) return <LoadingState title="Carregando inspeções..." />;
-  if (error) return <ErrorState title="Não foi possível carregar as inspeções" onRetry={load} />;
-  return <View style={styles.container}><LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}><View style={styles.headerIcon}><Ionicons name="clipboard-outline" size={23} color={colors.textOnDark} /></View><Text style={styles.title}>Inspeções</Text><Text style={styles.subtitle}>Acompanhe suas atividades atribuídas</Text><View style={styles.counter}><Text style={styles.counterText}>{filtered.length} {filtered.length === 1 ? 'atividade' : 'atividades'}</Text></View></LinearGradient><Text style={styles.filterLabel}>Filtrar por status</Text><View style={styles.filters}>{statusFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={status === filter.value} onPress={() => setStatus(filter.value)} />)}</View><Text style={styles.filterLabel}>Filtrar por data</Text><View style={styles.filters}>{([{ value: 'ALL' as const, label: 'Qualquer data' }, { value: 'TODAY' as const, label: 'Hoje' }, { value: 'UPCOMING' as const, label: 'Próximos dias' }]).map((filter) => <FilterChip key={filter.value} label={filter.label} selected={when === filter.value} onPress={() => setWhen(filter.value)} />)}</View><Text style={styles.filterLabel}>Filtrar por prioridade</Text><View style={styles.priorityFilters}>{priorityFilters.map((filter) => <FilterChip key={filter.value} label={filter.label} selected={priority === filter.value} onPress={() => setPriority(filter.value)} />)}</View>{filtered.length === 0 ? <EmptyState title="Nenhuma inspeção encontrada" description="Altere os filtros para ver outras inspeções." /> : <ScrollView contentContainerStyle={styles.list}>{filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} operations={operations} />)}</ScrollView>}</View>;
-}
-function matchesDate(inspection: Inspection, filter: DateFilter) {
-  if (filter === 'ALL') return true;
-  const today = inspection.scheduledAt.startsWith('Hoje') || isSameLocalDay(inspection.scheduledFor, 0);
-  if (filter === 'TODAY') return today;
-  return inspection.scheduledAt.startsWith('Amanhã') || isSameLocalDay(inspection.scheduledFor, 1) || (!today && Boolean(inspection.scheduledFor));
-}
-function isSameLocalDay(iso: string | undefined, offsetDays: number) {
-  if (!iso) return false;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return false;
-  const target = new Date();
-  target.setDate(target.getDate() + offsetDays);
-  return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate();
-}
-function FilterChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) { return <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}><Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></Pressable>; }
-function InspectionCard({ inspection, operations }: { inspection: Inspection; operations: PendingOperation[] }) {
-  const color = priorityColor[inspection.priority];
-  const syncIndicator = listSyncIndicatorForInspection(inspection.id, operations, inspection.status);
-  return (
-    <Pressable onPress={() => router.push({ pathname: '/inspections/[id]', params: { id: inspection.id } })} style={styles.pressable}>
-      <Card style={styles.card}>
-        <View style={[styles.priorityStripe, { backgroundColor: color }]} />
-        <View style={styles.cardBody}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.client}>{inspection.client}</Text>
-            <View style={[styles.priorityBadge, { backgroundColor: `${color}18` }]}>
-              <Text style={[styles.priority, { color }]}>{priorityLabel[inspection.priority]}</Text>
-            </View>
-          </View>
-          <Text style={styles.equipment}>{inspection.equipment}</Text>
-          <View style={styles.metaRow}><Ionicons name="location-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.site}</Text></View>
-          <View style={styles.metaRow}><Ionicons name="time-outline" size={14} color={colors.textMuted} /><Text style={styles.meta}>{inspection.scheduledAt}</Text></View>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: inspectionStatusColor(inspection.status) }]} />
-            <Text style={[styles.status, { color: inspectionStatusColor(inspection.status) }]}>
-              {inspectionStatusLabel(inspection.status)}
-            </Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </View>
-          {syncIndicator ? (
-            <View style={styles.syncRow} accessibilityLabel={syncIndicator.caption}>
-              <Ionicons name={syncIndicator.icon} size={14} color={syncIndicator.color} />
-              <Text style={[styles.syncCaption, { color: syncIndicator.color }]}>{syncIndicator.caption}</Text>
-            </View>
-          ) : null}
-        </View>
-      </Card>
-    </Pressable>
-  );
-}
+export default function InspectionsScreen() { const c = useThemeColors(); const [inspections, setInspections] = useState<Inspection[]>([]); const [operations, setOperations] = useState<PendingOperation[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const [status, setStatus] = useState<StatusFilter>('ALL'); const [priority, setPriority] = useState<PriorityFilter>('ALL'); const [when, setWhen] = useState<DateFilter>('ALL'); const load = useCallback(() => { setLoading(true); setError(false); listInspections().then((items) => { setInspections(items); void scheduleDeadlineNotifications(items); }).catch(() => setError(true)).finally(() => setLoading(false)); }, []); useFocusEffect(useCallback(() => { load(); }, [load])); useFocusEffect(useCallback(() => { void getPendingOperations().then(setOperations).catch(() => setOperations([])); }, [])); const filtered = useMemo(() => inspections.filter((item) => (status === 'ALL' || item.status === status) && (priority === 'ALL' || item.priority === priority) && matchesDate(item, when)), [inspections, priority, status, when]); if (loading) return <LoadingState title="Carregando inspeções..." />; if (error) return <ErrorState title="Não foi possível carregar as inspeções" onRetry={load} />; return <View style={[s.container, { backgroundColor: c.background }]}><LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.header}><View style={s.headerIcon}><Ionicons name="clipboard-outline" size={23} color={colors.textOnDark} /></View><Text style={s.title}>Inspeções</Text><Text style={s.subtitle}>Acompanhe suas atividades atribuídas</Text><View style={s.counter}><Text style={s.counterText}>{filtered.length} {filtered.length === 1 ? 'atividade' : 'atividades'}</Text></View></LinearGradient><Label label="Filtrar por status" c={c.textMuted} /><View style={s.filters}>{statusFilters.map((x) => <Chip key={x.value} label={x.label} selected={status === x.value} onPress={() => setStatus(x.value)} />)}</View><Label label="Filtrar por data" c={c.textMuted} /><View style={s.filters}>{([{ value: 'ALL' as const, label: 'Qualquer data' }, { value: 'TODAY' as const, label: 'Hoje' }, { value: 'UPCOMING' as const, label: 'Próximos dias' }]).map((x) => <Chip key={x.value} label={x.label} selected={when === x.value} onPress={() => setWhen(x.value)} />)}</View><Label label="Filtrar por prioridade" c={c.textMuted} /><View style={s.priorityFilters}>{priorityFilters.map((x) => <Chip key={x.value} label={x.label} selected={priority === x.value} onPress={() => setPriority(x.value)} />)}</View>{filtered.length === 0 ? <EmptyState title="Nenhuma inspeção encontrada" description="Altere os filtros para ver outras inspeções." /> : <ScrollView contentContainerStyle={s.list}>{filtered.map((x) => <InspectionCard key={x.id} inspection={x} operations={operations} />)}</ScrollView>}</View>; }
+function Label({ label, c }: { label: string; c: string }) { return <Text style={[s.filterLabel, { color: c }]}>{label}</Text>; }
+function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) { const c = useThemeColors(); return <Pressable onPress={onPress} style={[s.chip, { backgroundColor: selected ? c.navy : c.surface, borderColor: selected ? c.navy : c.border }]}><Text style={[s.chipText, { color: selected ? colors.textOnDark : c.textMuted }]}>{label}</Text></Pressable>; }
+function matchesDate(x: Inspection, f: DateFilter) { if (f === 'ALL') return true; const today = x.scheduledAt.startsWith('Hoje') || sameDay(x.scheduledFor, 0); return f === 'TODAY' ? today : x.scheduledAt.startsWith('Amanhã') || sameDay(x.scheduledFor, 1) || (!today && Boolean(x.scheduledFor)); } function sameDay(iso: string | undefined, offset: number) { if (!iso) return false; const date = new Date(iso); const target = new Date(); target.setDate(target.getDate() + offset); return !Number.isNaN(date.getTime()) && date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate(); }
+function InspectionCard({ inspection, operations }: { inspection: Inspection; operations: PendingOperation[] }) { const c = useThemeColors(); const color = priorityColor[inspection.priority]; const sync = listSyncIndicatorForInspection(inspection.id, operations, inspection.status); const statusColor = inspection.status === 'REJECTED' || inspection.status === 'APPROVED' || inspection.status === 'CANCELED' ? inspectionStatusColor(inspection.status) : c.navyLight; return <Pressable onPress={() => router.push({ pathname: '/inspections/[id]', params: { id: inspection.id } })} style={s.pressable}><Card style={s.card}><View style={[s.stripe, { backgroundColor: color }]} /><View style={s.cardBody}><View style={s.cardHeader}><Text style={[s.client, { color: c.text }]}>{inspection.client}</Text><View style={[s.badge, { backgroundColor: `${color}18` }]}><Text style={[s.priority, { color }]}>{priorityLabel[inspection.priority]}</Text></View></View><Text style={[s.equipment, { color: c.textMuted }]}>{inspection.equipment}</Text><Meta icon="location-outline" value={inspection.site} color={c.textMuted} /><Meta icon="time-outline" value={inspection.scheduledAt} color={c.textMuted} /><View style={s.statusRow}><View style={[s.dot, { backgroundColor: statusColor }]} /><Text style={[s.status, { color: statusColor }]}>{inspectionStatusLabel(inspection.status)}</Text><Ionicons name="chevron-forward" size={18} color={c.textMuted} /></View>{sync ? <View style={s.syncRow}><Ionicons name={sync.icon} size={14} color={sync.color} /><Text style={[s.syncCaption, { color: sync.color }]}>{sync.caption}</Text></View> : null}</View></Card></Pressable>; }
+function Meta({ icon, value, color }: { icon: keyof typeof Ionicons.glyphMap; value: string; color: string }) { return <View style={s.metaRow}><Ionicons name={icon} size={14} color={color} /><Text style={[s.meta, { color }]}>{value}</Text></View>; }
 const priorityColor = { HIGH: colors.danger, MEDIUM: '#B7791F', LOW: colors.success }; const priorityLabel = { HIGH: 'Alta', MEDIUM: 'Média', LOW: 'Baixa' };
-const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: colors.background }, header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, headerIcon: { width: 42, height: 42, borderRadius: radius.md, backgroundColor: '#ffffff26', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm }, title: { ...typography.title, color: colors.textOnDark }, subtitle: { ...typography.body, color: colors.textOnDark, opacity: 0.85, marginTop: spacing.xs }, counter: { alignSelf: 'flex-start', backgroundColor: '#ffffff24', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginTop: spacing.md }, counterText: { ...typography.caption, color: colors.textOnDark }, filterLabel: { ...typography.caption, color: colors.textMuted, marginTop: spacing.md, paddingHorizontal: spacing.lg, textTransform: 'uppercase', letterSpacing: 0.6 }, filters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm }, priorityFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md }, chip: { height: 36, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, chipSelected: { backgroundColor: colors.navy, borderColor: colors.navy }, chipText: { ...typography.caption, color: colors.textMuted }, chipTextSelected: { color: colors.textOnDark }, list: { padding: spacing.lg, paddingTop: 0, gap: spacing.sm }, pressable: { borderRadius: radius.lg }, card: { flexDirection: 'row', padding: 0, overflow: 'hidden' }, priorityStripe: { width: 4 }, cardBody: { flex: 1, padding: spacing.md, gap: spacing.xs }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, alignItems: 'center' }, client: { ...typography.subtitle, color: colors.text, flexShrink: 1 }, priorityBadge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }, priority: { ...typography.caption, fontWeight: '700' }, equipment: { ...typography.body, color: colors.textMuted }, metaRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, meta: { ...typography.caption, color: colors.textMuted }, statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs }, statusDot: { width: 6, height: 6, borderRadius: radius.pill }, status: { ...typography.caption, color: colors.navy, flex: 1 }, syncRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }, syncCaption: { ...typography.caption, flex: 1 } });
+const s = StyleSheet.create({ container: { flex: 1 }, header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, headerIcon: { width: 42, height: 42, borderRadius: radius.md, backgroundColor: '#ffffff26', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm }, title: { ...typography.title, color: colors.textOnDark }, subtitle: { ...typography.body, color: colors.textOnDark, opacity: .85, marginTop: spacing.xs }, counter: { alignSelf: 'flex-start', backgroundColor: '#ffffff24', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginTop: spacing.md }, counterText: { ...typography.caption, color: colors.textOnDark }, filterLabel: { ...typography.caption, marginTop: spacing.md, paddingHorizontal: spacing.lg, textTransform: 'uppercase', letterSpacing: .6 }, filters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm }, priorityFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md }, chip: { height: 36, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 }, chipText: { ...typography.caption }, list: { padding: spacing.lg, paddingTop: 0, gap: spacing.sm }, pressable: { borderRadius: radius.lg }, card: { flexDirection: 'row', padding: 0, overflow: 'hidden' }, stripe: { width: 4 }, cardBody: { flex: 1, padding: spacing.md, gap: spacing.xs }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, alignItems: 'center' }, client: { ...typography.subtitle, flexShrink: 1 }, badge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }, priority: { ...typography.caption, fontWeight: '700' }, equipment: { ...typography.body }, metaRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, meta: { ...typography.caption }, statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs }, dot: { width: 6, height: 6, borderRadius: radius.pill }, status: { ...typography.caption, flex: 1 }, syncRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }, syncCaption: { ...typography.caption, flex: 1 } });

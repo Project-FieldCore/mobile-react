@@ -24,7 +24,7 @@ export function Button({
   loading,
   disabled,
 }: ButtonProps) {
-  const { theme } = useAppTheme();
+  const { colors: themeColors } = useAppTheme();
   const isDisabled = disabled || loading;
 
   if (variant === 'secondary') {
@@ -32,12 +32,12 @@ export function Button({
       <Pressable
         onPress={onPress}
         disabled={isDisabled}
-        style={[styles.base, styles.secondary, theme === 'dark' && styles.secondaryDark, isDisabled && styles.disabled]}
+        style={[styles.base, styles.secondary, { backgroundColor: themeColors.surface, borderColor: themeColors.border }, isDisabled && styles.disabled]}
       >
         {loading ? (
           <ActivityIndicator color={colors.primary} />
         ) : (
-          <Text style={styles.secondaryText}>{label}</Text>
+          <Text style={[styles.secondaryText, { color: themeColors.text }]}>{label}</Text>
         )}
       </Pressable>
     );
@@ -48,12 +48,12 @@ export function Button({
       <Pressable
         onPress={onPress}
         disabled={isDisabled}
-        style={[styles.base, styles.light, isDisabled && styles.disabled]}
+        style={[styles.base, styles.light, { backgroundColor: themeColors.surface }, isDisabled && styles.disabled]}
       >
         {loading ? (
           <ActivityIndicator color={colors.navy} />
         ) : (
-          <Text style={styles.lightText}>{label}</Text>
+          <Text style={[styles.lightText, { color: themeColors.navy }]}>{label}</Text>
         )}
       </Pressable>
     );
@@ -113,13 +113,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   secondary: {
-    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
   },
-  secondaryDark: { backgroundColor: '#182338', borderColor: '#465a78' },
   light: {
-    backgroundColor: colors.surface,
   },
   dark: {
     backgroundColor: colors.navy,
@@ -134,11 +130,9 @@ const styles = StyleSheet.create({
   },
   secondaryText: {
     ...typography.subtitle,
-    color: colors.text,
   },
   lightText: {
     ...typography.subtitle,
-    color: colors.navy,
   },
   darkText: {
     ...typography.subtitle,
