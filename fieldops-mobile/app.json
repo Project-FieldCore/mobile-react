@@ -1,12 +1,17 @@
 {
   "expo": {
-    "name": "fieldops-mobile",
+    "name": "FieldOps",
     "slug": "fieldops-mobile",
     "scheme": "fieldops-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/fieldcore-app-icon.png",
+    "splash": {
+      "image": "./assets/fieldcore-app-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#152A4E"
+    },
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -16,9 +21,7 @@
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#152A4E",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/fieldcore-app-icon.png"
       },
       "predictiveBackGestureEnabled": false
     },
