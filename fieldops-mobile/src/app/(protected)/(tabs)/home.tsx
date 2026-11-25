@@ -97,7 +97,7 @@ function homeChipBorder(tone: HomeChipModel['tone']): string {
 
 export default function HomeScreen() {
   const signOut = useAuthStore((state) => state.signOut);
-  const { theme, toggleTheme } = useAppTheme();
+  const { theme } = useAppTheme();
   const dark = theme === 'dark';
   const text = dark ? '#F4F7FB' : colors.text;
   const muted = dark ? '#AAB9CE' : colors.textMuted;
@@ -155,10 +155,6 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Olá, técnico!</Text>
             <Text style={styles.subtitle}>Aqui está o resumo do seu dia</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Alternar tema" onPress={toggleTheme} style={styles.themeButton}>
-            <Ionicons name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color={colors.textOnDark} />
-            <Text style={styles.themeButtonText}>{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sair da conta"
@@ -293,8 +289,6 @@ const styles = StyleSheet.create({
   logoutButton: {
     padding: spacing.sm,
   },
-  themeButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
-  themeButtonText: { ...typography.caption, color: colors.textOnDark },
   greeting: {
     ...typography.title,
     color: colors.textOnDark,
