@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { login, logoutSession, refreshSession } from './api';
 import { clearSession, getSession, isSessionExpired, setSession, type Session } from '@/infrastructure/storage/session';
 import { ApiError } from '@/infrastructure/api/client';
+import { useBiometricGateStore } from './biometric/biometricGateStore';
+import { clearBiometricUnlock } from './biometric/biometricPreference';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 type SignOutOptions = { revokeRemote?: boolean };
@@ -31,6 +33,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   hydrate: async () => {
     try {
       const session = await getSession();
+      // Biometria local (PBI-0080): decide o bloqueio ANTES de liberar as rotas protegidas.
+      await useBiometricGateStore.getState().restoreOnLaunch(session !== null);
       set({ session, status: session ? 'authenticated' : 'unauthenticated' });
     } catch {
       // A falha ao ler o armazenamento seguro não pode prender o app na splash.
@@ -40,6 +44,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signIn: async (email, password) => {
     const session = await login({ email, password });
     await setSession(session);
+    // Login por senha comprova a identidade: libera o gate local.
+    useBiometricGateStore.getState().reset();
     set({ session, status: 'authenticated' });
   },
   refresh: () => {
@@ -86,6 +92,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     await clearSession();
+    try {
+      await clearBiometricUnlock();
+    } catch {
+      // A limpeza local não pode falhar o logout; a preferência só vale com sessão.
+    }
+    useBiometricGateStore.getState().reset();
     set({ session: null, status: 'unauthenticated' });
   },
 }));
