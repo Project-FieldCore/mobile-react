@@ -35,6 +35,18 @@ vi.mock('@/infrastructure/storage/session', () => ({
   isSessionExpired: vi.fn().mockReturnValue(false),
 }));
 
+// PBI-0080: o store de auth limpa o desbloqueio biométrico no logout — fora do escopo deste teste.
+vi.mock('./biometric/biometricPreference', () => ({
+  isBiometricUnlockEnabled: vi.fn().mockResolvedValue(false),
+  setBiometricUnlockEnabled: vi.fn().mockResolvedValue(undefined),
+  clearBiometricUnlock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('./biometric/biometricService', () => ({
+  getBiometricAvailability: vi.fn(),
+  authenticateWithBiometrics: vi.fn(),
+}));
+
 const mockedApiRequest = apiRequest as unknown as ReturnType<typeof vi.fn>;
 const mockedRefreshSession = refreshSession as unknown as ReturnType<typeof vi.fn>;
 

@@ -44,6 +44,12 @@
           "locationWhenInUsePermission": "Permita que o FieldOps registre sua localização ao iniciar a inspeção."
         }
       ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Permita que o FieldOps use o Face ID para desbloquear o aplicativo neste aparelho."
+        }
+      ],
       "expo-notifications",
       "expo-status-bar",
       "expo-font"
