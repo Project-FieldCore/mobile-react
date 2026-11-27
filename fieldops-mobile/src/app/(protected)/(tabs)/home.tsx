@@ -6,7 +6,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
-import { BiometricSettingsCard } from '@/features/auth/biometric/BiometricSettingsCard';
 import { useAppTheme } from '@/features/theme/ThemeProvider';
 import { disableAssignmentPush, enableAssignmentPush, isPushOptedIn, syncAssignmentPushRegistration } from '@/features/push/pushRegistration';
 import { getPendingOperations } from '@/features/inspections/draftStore';
@@ -227,8 +226,6 @@ export default function HomeScreen() {
           />
           {pushMessage ? <Text style={[styles.pushMessage, { color: muted }]}>{pushMessage}</Text> : null}
         </Card>
-
-        <BiometricSettingsCard />
 
         <Text style={[styles.sectionTitle, { color: text }]}>Próximas inspeções</Text>
         <View style={styles.list}>
