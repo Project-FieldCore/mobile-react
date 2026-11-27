@@ -88,7 +88,7 @@ src/
 
 ```bash
 git clone https://github.com/Project-FieldCore/mobile-react.git
-cd mobile-react/fieldops-mobile
+cd mobile-react
 npm ci
 ```
 
@@ -128,10 +128,9 @@ Para acessar pelo celular, execute `npx expo start --clear --lan`. O Expo Go ins
 
 ## Qualidade / CI
 
-App em `fieldops-mobile/`. Pipeline de PR: lint + typecheck (sem EAS Build).
+O app Expo fica na raiz do repositório. Pipeline de PR: lint + typecheck (sem EAS Build).
 
 ```bash
-cd fieldops-mobile
 npm ci
 npm run lint
 npm run typecheck
@@ -201,7 +200,7 @@ O aplicativo distingue e exibe claramente cinco estados de sincronização:
 
 ### Mocks (`EXPO_PUBLIC_DATA_SOURCE=mock`)
 
-- Cadastros/auth: `fieldops-mobile/src/data/openapi/fieldops-v1.json` (cópia do mock canônico da API) + `infrastructure/api/contractMocks.ts`
+- Cadastros/auth: `src/data/openapi/fieldops-v1.json` (cópia do mock canônico da API) + `infrastructure/api/contractMocks.ts`
 - Login mock: e-mail do contrato (`ana.silva@example.com`) + senha local em `src/data/demoCredentials.ts` (não está no OpenAPI)
 - Erros HTTP: `ErrorResponse` (doc. 12.2) via `infrastructure/api/errorResponse.ts`
 - Inspeções Sprint-3: `features/inspections/mockRepository.ts` — fixtures de domínio, **não** mocks de cadastro OpenAPI
@@ -210,11 +209,10 @@ O aplicativo distingue e exibe claramente cinco estados de sincronização:
 
 ## 📦 Build
 
-Para gerar o APK de demonstração, entre na pasta do aplicativo e autentique a
+Para gerar o APK de demonstração, autentique a
 conta Expo autorizada para o projeto:
 
 ```bash
-cd fieldops-mobile
 npx eas-cli@27.5.0 login
 npx eas-cli@27.5.0 build --platform android --profile preview
 ```

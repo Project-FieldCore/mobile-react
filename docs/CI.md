@@ -2,7 +2,7 @@
 
 Pipeline mínimo de qualidade no GitHub Actions (`.github/workflows/ci.yml`).
 
-O app Expo vive em `fieldops-mobile/`; o workflow usa `working-directory: fieldops-mobile`.
+O app Expo vive na raiz do repositório; o workflow roda direto na raiz.
 
 ## O que roda
 
@@ -17,7 +17,6 @@ Em todo `pull_request` e em push para `develop` / `main`:
 ## Local
 
 ```bash
-cd fieldops-mobile
 npm ci
 npm run lint
 npm run typecheck
