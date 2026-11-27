@@ -1,6 +1,7 @@
 import { API_TIMEOUT_MS, getApiBaseUrl } from '@/config/api';
 import type { Session } from '@/infrastructure/storage/session';
 import { formatErrorMessage, parseErrorResponse, type ErrorResponse, type FieldError } from './errorResponse';
+import { toUploadPart } from './uploadPart';
 
 export class ApiError extends Error {
   constructor(
@@ -132,7 +133,16 @@ type UploadFile = { uri: string; name: string; type: string };
 
 export async function apiUpload<T>(path: string, file: UploadFile, session?: Session | null): Promise<T> {
   const form = new FormData();
-  form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  // Expo SDK 58: o fetch exige `File`/Blob no FormData; `{ uri, name, type }` não é suportado.
+  let part;
+  try {
+    // Import tardio: o módulo nativo só é carregado ao enviar uma foto (e não nos testes de Node).
+    const { File } = await import('expo-file-system');
+    part = toUploadPart(new File(file.uri), file.name, file.type);
+  } catch {
+    throw new ApiError('Não foi possível ler a foto selecionada. Tire a foto novamente.');
+  }
+  form.append('file', part as unknown as Blob, file.name);
   const abortController = new AbortController();
   const apiBaseUrl = assertApiBaseUrl();
   const ngrokHeaders: Record<string, string> = apiBaseUrl.includes('.ngrok-free.dev') ? { 'ngrok-skip-browser-warning': 'true' } : {};
