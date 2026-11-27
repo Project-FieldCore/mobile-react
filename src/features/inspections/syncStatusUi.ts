@@ -30,6 +30,7 @@ export type SyncBannerModel = {
 };
 
 const OPERATION_TYPE_LABELS: Record<string, string> = {
+  START: 'Início da inspeção',
   ANSWERS: 'Respostas',
   COMPLETE: 'Conclusão',
   UPSERT: 'Atualização',

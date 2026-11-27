@@ -4,6 +4,7 @@ import { canRetry } from './syncQueue';
 import { mapAnswerValue } from './syncPushMapper';
 import { createUuid, isUuid } from './uuid';
 import { parseCompletionPayload, type CompletionPayload } from './completionOutbox';
+import { parseStartPayload, type StartPayload } from './startOutbox';
 
 export type InspectionDraft = {
   answers: Record<string, string>;
@@ -255,6 +256,33 @@ export async function enqueueInspectionCompletion(
     status: 'PENDING',
     attempts: 0,
     operationType: 'COMPLETE',
+    payload: JSON.stringify({ ...payload, operationId }),
+  });
+  return operationId;
+}
+
+/** Enfileira o início da inspeção (uma operação START por inspeção, operationId estável). */
+export async function enqueueInspectionStart(
+  inspectionId: string,
+  payload: Omit<StartPayload, 'operationId'>,
+): Promise<string> {
+  const existing = (await getPendingOperations()).find((operation) => (
+    operation.inspectionId === inspectionId
+    && operation.operationType === 'START'
+    && parseStartPayload(operation.payload) !== null
+  ));
+  if (existing) {
+    if (existing.status !== 'PENDING') await updateSyncOperation(existing.id, 'PENDING', undefined, false);
+    return existing.id;
+  }
+  const operationId = createUuid();
+  await enqueueRawSyncOperation({
+    id: operationId,
+    inspectionId,
+    createdAt: new Date().toISOString(),
+    status: 'PENDING',
+    attempts: 0,
+    operationType: 'START',
     payload: JSON.stringify({ ...payload, operationId }),
   });
   return operationId;

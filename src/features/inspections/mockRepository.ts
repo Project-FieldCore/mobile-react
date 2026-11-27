@@ -5,6 +5,7 @@
 import { captureDeviceLocation } from './deviceLocation';
 import {
   enqueueInspectionCompletion,
+  enqueueInspectionStart,
   enqueueInspectionForSync,
   getInspectionDraft,
   getPendingOperations,
@@ -14,6 +15,7 @@ import {
 } from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
 import { applyPendingCompletionStatus } from './completionOutbox';
+import { startInspectionOfflineFirst, type StartFlowDeps } from './startFlow';
 import { completeInspectionOfflineFirst, type CompleteFlowDeps } from './completionFlow';
 import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
@@ -272,13 +274,8 @@ export async function startInspection(id: string): Promise<void> {
   const location = await captureDeviceLocation();
   if (location) await saveInspectionLocation(id, location);
   if (usesExecutionApi()) {
-    try {
-      const current = await fetchInspection(id);
-      if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt, location);
-    } catch {
-      const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id);
-      if (!cached) throw new Error('Não foi possível abrir a inspeção sem uma cópia baixada.');
-    }
+    // Offline-first: sem rede, o START vai para a outbox e o sync o aplica antes de respostas/conclusão.
+    await startInspectionOfflineFirst(id, startedAt, location, startFlowDeps());
     return;
   }
   const inspection = inspections.find((item) => item.id === id);
@@ -292,6 +289,15 @@ export async function startInspection(id: string): Promise<void> {
 export async function markDownloadedInspectionStatus(id: string, status: InspectionStatus): Promise<void> {
   const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id);
   if (cached) await saveDownloadedInspection({ ...cached, status });
+}
+
+function startFlowDeps(): StartFlowDeps {
+  return {
+    getCachedInspection: async (id) => (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null,
+    startRemote: startAssignedInspection,
+    enqueueStart: enqueueInspectionStart,
+    saveInspection: saveDownloadedInspection,
+  };
 }
 
 function completionDeps(): CompleteFlowDeps {

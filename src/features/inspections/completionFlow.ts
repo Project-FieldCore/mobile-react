@@ -18,6 +18,7 @@ import {
   type CompletionPayload,
   type CompletionSignature,
 } from './completionOutbox';
+import { describeSyncError } from './syncErrorMessage';
 import type { ChecklistSection, Inspection } from './mockRepository';
 import type { PendingOperation } from './draftStore';
 
@@ -31,6 +32,7 @@ export type CompleteRemote = (
   location: Location | undefined,
   signature: CompletionSignature | undefined,
   completedAtDevice: string,
+  operationId?: string,
 ) => Promise<void>;
 
 export type CompleteFlowDeps = {
@@ -159,7 +161,7 @@ export async function sendCompletionOperation(
   // usa a versão atual do servidor, que é a que o endpoint exige.
   let version = server?.version ?? payload.baseVersion;
   const send = () => deps.completeRemote(
-    payload.inspectionId, version, payload.answers, location, payload.signature, payload.completedAtDevice,
+    payload.inspectionId, version, payload.answers, location, payload.signature, payload.completedAtDevice, operation.id,
   );
 
   try {
@@ -180,7 +182,7 @@ export async function sendCompletionOperation(
       const currentVerdict = classifyServerState(current);
       if (currentVerdict?.kind === 'applied') return applied(payload.inspectionId, deps);
     }
-    return { kind: 'failed', message: error instanceof Error ? error.message : 'Não foi possível concluir a inspeção.' };
+    return { kind: 'failed', message: describeSyncError(error, 'Não foi possível concluir a inspeção.') };
   }
 
   return applied(payload.inspectionId, deps);

@@ -188,7 +188,7 @@ describe('sync da conclusão (COMPLETE)', () => {
     expect(deps.completeRemote).toHaveBeenCalledWith(
       INSPECTION_ID, 6,
       [{ itemId: 'item-a', valueText: 'Conforme', conformity: 'CONFORMING' }],
-      { latitude: -23.5, longitude: -46.6 }, SIGNATURE, '2026-11-26T23:00:00.000Z',
+      { latitude: -23.5, longitude: -46.6 }, SIGNATURE, '2026-11-26T23:00:00.000Z', 'op-1',
     );
     expect(deps.markSubmitted).toHaveBeenCalledWith(INSPECTION_ID);
     expect(deps.removeDeliveredOperations).toHaveBeenCalledWith(INSPECTION_ID);
@@ -228,7 +228,10 @@ describe('sync da conclusão (COMPLETE)', () => {
 
   it('erro de negócio no envio vira falha com mensagem; rede propaga para nova tentativa', async () => {
     const business = makeSendDeps({ completeRemote: vi.fn().mockRejectedValue(httpError(409, 'INSPECTION_INCOMPLETE', 'Item obrigatório pendente')) });
-    await expect(sendCompletionOperation(completionOperation(), business)).resolves.toEqual({ kind: 'failed', message: 'Item obrigatório pendente' });
+    await expect(sendCompletionOperation(completionOperation(), business)).resolves.toEqual({
+      kind: 'failed',
+      message: 'Há itens obrigatórios sem resposta, observação ou evidência. [INSPECTION_INCOMPLETE]',
+    });
     expect(business.markSubmitted).not.toHaveBeenCalled();
 
     const offline = makeSendDeps({ fetchInspection: vi.fn().mockRejectedValue(networkError()) });

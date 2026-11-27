@@ -7,6 +7,7 @@
  */
 import type { ChecklistSection, Inspection } from './mockRepository';
 import type { PendingOperation } from './draftStore';
+import { parseStartPayload } from './startOutbox';
 
 export const COMPLETION_PAYLOAD_VERSION = 1;
 
@@ -81,19 +82,28 @@ export function isCompletionOperation(operation: PendingOperation): boolean {
 }
 
 /**
- * Enquanto houver conclusão pendente, a inspeção continua "Aguardando
- * sincronização" mesmo que o servidor ainda a veja EM ANDAMENTO (ex.: lista
- * baixada online antes de sincronizar).
+ * Enquanto houver início/conclusão pendente, a inspeção reflete o estado local
+ * mesmo que o servidor ainda a veja ATRIBUÍDA/EM ANDAMENTO (ex.: lista baixada
+ * online antes de sincronizar): início pendente → "Em andamento";
+ * conclusão pendente → "Aguardando sincronização".
  */
 export function applyPendingCompletionStatus(
   inspections: Inspection[],
   operations: PendingOperation[],
 ): Inspection[] {
-  const pendingIds = new Set(operations.filter(isCompletionOperation).map((operation) => operation.inspectionId));
-  if (pendingIds.size === 0) return inspections;
-  return inspections.map((inspection) => (
-    pendingIds.has(inspection.id) && (inspection.status === 'IN_PROGRESS' || inspection.status === 'ASSIGNED')
-      ? { ...inspection, status: 'PENDING_SYNC' as const }
-      : inspection
-  ));
+  const completing = new Set(operations.filter(isCompletionOperation).map((operation) => operation.inspectionId));
+  const starting = new Set(
+    operations.filter((operation) => operation.operationType === 'START' && parseStartPayload(operation.payload) !== null)
+      .map((operation) => operation.inspectionId),
+  );
+  if (completing.size === 0 && starting.size === 0) return inspections;
+  return inspections.map((inspection) => {
+    if (completing.has(inspection.id) && (inspection.status === 'IN_PROGRESS' || inspection.status === 'ASSIGNED')) {
+      return { ...inspection, status: 'PENDING_SYNC' as const };
+    }
+    if (starting.has(inspection.id) && inspection.status === 'ASSIGNED') {
+      return { ...inspection, status: 'IN_PROGRESS' as const };
+    }
+    return inspection;
+  });
 }

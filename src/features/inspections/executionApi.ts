@@ -166,10 +166,13 @@ export async function startAssignedInspection(
   id: string,
   startedAtDevice: string,
   location?: { latitude: number; longitude: number },
+  /** Id estável da operação da outbox; o servidor repete a resposta em reenvios (X-Operation-Id). */
+  operationId?: string,
 ): Promise<Inspection> {
   const row = await apiRequest<ApiAssigned>(`/inspections/my/${id}/start`, {
     method: 'POST',
     session: await session(),
+    headers: operationId ? { 'X-Operation-Id': operationId } : undefined,
     body: { startedAtDevice, latitude: location?.latitude, longitude: location?.longitude },
   });
   return toMobileInspection(row);
@@ -208,10 +211,13 @@ export async function completeAssignedInspection(
   signature?: { contentType: 'image/png'; dataBase64: string },
   /** Instante real da conclusão no aparelho (relevante quando o envio é adiado pela outbox). */
   completedAtDevice: string = new Date().toISOString(),
+  /** Id estável da operação da outbox (X-Operation-Id): reenvio nunca conclui duas vezes. */
+  operationId?: string,
 ): Promise<void> {
   await apiRequest(`/inspections/my/${id}/complete`, {
     method: 'POST',
     session: await session(),
+    headers: operationId ? { 'X-Operation-Id': operationId } : undefined,
     body: {
       version,
       completedAtDevice,
