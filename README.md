@@ -111,6 +111,8 @@ EXPO_PUBLIC_DATA_SOURCE=api
 
 Use `EXPO_PUBLIC_DATA_SOURCE=mock` para trabalhar sem backend. Para usar a API local em um celular físico, substitua `localhost` pelo IPv4 da máquina na mesma rede, por exemplo `http://192.168.0.10:8080/api/v1`.
 
+> **HTTP apenas em DEV/demo:** a API de desenvolvimento é servida por HTTP (sem TLS) por IP. Para permitir isso, o Android usa `android.usesCleartextTraffic: true` e o iOS usa `NSAppTransportSecurity.NSAllowsArbitraryLoads: true` (`ios.infoPlist` em `app.json`; exceção por domínio não funciona para IP literal). Essas exceções devem ser removidas ou restringidas quando a API passar a usar HTTPS. Depois de alterar o `infoPlist`, é preciso gerar o app nativo de novo (`npx expo prebuild`/`expo run:ios`).
+
 > Cada ambiente (local, integração, demonstração) deve possuir sua própria URL de API e configuração — nunca compartilhar credenciais entre ambientes.
 
 ### Executando localmente
