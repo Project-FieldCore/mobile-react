@@ -45,7 +45,12 @@ export type MobileSyncInspectionPayload = {
   startedAtServer?: string | null;
   version: number;
   updatedAt: string;
-  items: MobileSyncInspectionItem[];
+  /**
+   * Presente no download completo; o pull incremental após uma mudança de status
+   * (ex.: revisão) traz apenas `itemsCount`. Sem `items`, o checklist local é mantido.
+   */
+  items?: MobileSyncInspectionItem[];
+  itemsCount?: number;
   review?: MobileSyncInspectionReview | null;
 };
 

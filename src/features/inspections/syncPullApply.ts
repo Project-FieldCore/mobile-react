@@ -23,7 +23,8 @@ export type ApplyPullPageResult = {
 };
 
 function isInspectionPayload(payload: MobileSyncChange['payload']): payload is MobileSyncInspectionPayload {
-  return Boolean(payload && 'items' in payload && Array.isArray(payload.items));
+  // O payload incremental (ex.: após revisão) não traz `items`: ainda é um INSPECTION válido.
+  return Boolean(payload && typeof payload.id === 'string' && 'status' in payload && !('inspectionItemId' in payload));
 }
 
 function isResponsePayload(payload: MobileSyncChange['payload']): payload is MobileSyncResponsePayload {
@@ -35,7 +36,9 @@ async function applyInspectionUpsert(change: MobileSyncChange): Promise<boolean>
   const existing = (await readDownloadedInspections()).find((item) => item.id === change.payload!.id) ?? null;
   const inspection = toMobileInspectionFromPull(change.payload, existing);
   await saveDownloadedInspection(inspection);
-  await saveDownloadedChecklist(inspection.id, toChecklistSections(change.payload.items));
+  if (Array.isArray(change.payload.items)) {
+    await saveDownloadedChecklist(inspection.id, toChecklistSections(change.payload.items));
+  }
   return true;
 }
 

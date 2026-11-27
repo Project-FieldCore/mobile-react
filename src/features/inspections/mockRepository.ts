@@ -15,6 +15,7 @@ import {
 } from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
 import { applyPendingCompletionStatus } from './completionOutbox';
+import { mergeServerWithLocal, needsServerDetail, refreshInspectionsFromServer, type RefreshDeps } from './inspectionRefresh';
 import { startInspectionOfflineFirst, type StartFlowDeps } from './startFlow';
 import { completeInspectionOfflineFirst, type CompleteFlowDeps } from './completionFlow';
 import { ApiError } from '@/infrastructure/api/client';
@@ -218,12 +219,31 @@ async function withPendingCompletion(items: Inspection[]): Promise<Inspection[]>
   }
 }
 
+function refreshDeps(): RefreshDeps {
+  return { fetchInspection, saveInspection: saveDownloadedInspection };
+}
+
+/** Atualiza a cópia local das inspeções concluídas/decididas (usado após o pull). */
+export async function refreshSettledInspections(): Promise<number> {
+  if (!usesExecutionApi()) return 0;
+  const cached = await readDownloadedInspections();
+  const pending = new Set((await getPendingOperations().catch(() => [])).map((operation) => operation.inspectionId));
+  const targets = cached.filter((inspection) => needsServerDetail(inspection) && !pending.has(inspection.id));
+  await refreshInspectionsFromServer(targets, refreshDeps(), pending);
+  return targets.length;
+}
+
 export async function listInspections(): Promise<Inspection[]> {
   if (usesExecutionApi()) {
     try {
-      const downloaded = await fetchAssignedInspections();
-      await Promise.all(downloaded.map((inspection) => saveDownloadedInspection(inspection)));
-      return withPendingCompletion(downloaded);
+      const assigned = await fetchAssignedInspections();
+      await Promise.all(assigned.map((inspection) => saveDownloadedInspection(inspection)));
+      const operations = await getPendingOperations().catch(() => []);
+      // /inspections/my não lista SUBMITTED/APPROVED: mantém as cópias locais (pull/conclusão).
+      const merged = mergeServerWithLocal(assigned, await readDownloadedInspections(), operations);
+      const pendingIds = new Set(operations.map((operation) => operation.inspectionId));
+      const refreshed = await refreshInspectionsFromServer(merged, refreshDeps(), pendingIds);
+      return withPendingCompletion(refreshed);
     } catch (error) {
       const cached = await readDownloadedInspections();
       if (cached.length) return withPendingCompletion(cached);

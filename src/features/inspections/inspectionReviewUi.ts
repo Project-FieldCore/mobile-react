@@ -53,3 +53,30 @@ export function reviewerCaption(review?: InspectionReview | null): string | null
   const name = review?.reviewerName?.trim();
   return name ? `Revisor: ${name}` : null;
 }
+
+/** Título (eyebrow) do detalhe conforme o estado da inspeção. */
+export function inspectionHeadline(status: InspectionStatus): string {
+  switch (status) {
+    case 'REJECTED': return 'INSPEÇÃO REPROVADA';
+    case 'APPROVED': return 'INSPEÇÃO APROVADA';
+    case 'SUBMITTED': return 'INSPEÇÃO ENVIADA';
+    case 'PENDING_SYNC': return 'AGUARDANDO SINCRONIZAÇÃO';
+    case 'CANCELED': return 'INSPEÇÃO CANCELADA';
+    case 'IN_PROGRESS': return 'INSPEÇÃO EM ANDAMENTO';
+    default: return 'INSPEÇÃO ATRIBUÍDA';
+  }
+}
+
+/** Só inspeções atribuídas/em andamento permitem iniciar ou continuar o checklist. */
+export function canExecuteInspection(status: InspectionStatus): boolean {
+  return status === 'ASSIGNED' || status === 'IN_PROGRESS';
+}
+
+export function isApprovedInspection(inspection: Pick<Inspection, 'status'>): boolean {
+  return inspection.status === 'APPROVED';
+}
+
+/** Comentário do revisor numa aprovação (pode vir vazio). */
+export function approvalComment(review?: InspectionReview | null): string | null {
+  return review?.motivo?.trim() || null;
+}
