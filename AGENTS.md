@@ -3,6 +3,11 @@
 Contexto canônico (qualquer IA):  
 **https://github.com/Project-FieldCore/docs/blob/main/AGENTS.md**
 
+## Expo
+
+**Expo HAS CHANGED.** Leia a documentação versionada exata em
+https://docs.expo.dev/versions/v57.0.0/ antes de escrever qualquer código.
+
 ## Este repositório
 
 - Stack: Expo + React Native + TypeScript (app em `fieldops-mobile/`)
