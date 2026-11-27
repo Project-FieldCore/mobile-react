@@ -1,5 +1,8 @@
 import {
   getPendingOperations,
+  hydrateInspectionDraft,
+  removeDeliveredInspectionOperations,
+  setEvidenceUploadStatus,
   recordConflictOperation,
   rekeySyncOperation,
   removeSyncOperation,
@@ -11,8 +14,18 @@ import { processPendingOperations, type BatchSyncResult, type SendOutcome } from
 import { pushMobileSyncOperations } from './syncPushApi';
 import { mapSyncReceipt, toMobileSyncOperation, type AnswerSyncPayload } from './syncPushMapper';
 import { createUuid, isUuid } from './uuid';
+import { parseCompletionPayload } from './completionOutbox';
+import { sendCompletionOperation, type SendCompletionDeps } from './completionFlow';
+import { sendEvidenceOperation, type SendEvidenceDeps } from './evidenceSync';
+import { completeAssignedInspection, fetchInspection, uploadItemEvidence } from './executionApi';
+import { markDownloadedInspectionStatus } from './mockRepository';
 
 const PUSHABLE_TYPES = new Set(['ANSWERS']);
+
+function isLegacyCompletion(operation: PendingOperation): boolean {
+  // Mock/legado: COMPLETE sem payload de conclusão não tem o que enviar.
+  return parseCompletionPayload(operation.payload) === null;
+}
 
 async function ensureUuidOperationId(operation: PendingOperation): Promise<PendingOperation> {
   if (isUuid(operation.id)) return operation;
@@ -37,10 +50,30 @@ async function bumpSiblingAnswerVersions(inspectionId: string, nextBaseVersion: 
   }));
 }
 
+const completionDeps: SendCompletionDeps = {
+  fetchInspection,
+  completeRemote: completeAssignedInspection,
+  markSubmitted: (id) => markDownloadedInspectionStatus(id, 'SUBMITTED'),
+  removeDeliveredOperations: removeDeliveredInspectionOperations,
+};
+
+const evidenceDeps: SendEvidenceDeps = {
+  getDraft: hydrateInspectionDraft,
+  upload: uploadItemEvidence,
+  setUploadStatus: setEvidenceUploadStatus,
+};
+
 export async function sendOutboxOperation(operation: PendingOperation): Promise<SendOutcome> {
+  // Conclusão e evidências não passam pelo /mobile/sync/push (o servidor só aplica
+  // INSPECTION_RESPONSE): usam os endpoints dedicados, respeitando a ordem da outbox
+  // (respostas → localização → evidências → conclusão).
+  if (operation.operationType === 'COMPLETE') {
+    return isLegacyCompletion(operation) ? { kind: 'skipped' } : sendCompletionOperation(operation, completionDeps);
+  }
+  if (operation.operationType === 'EVIDENCE') return sendEvidenceOperation(operation, evidenceDeps);
+
   if (!PUSHABLE_TYPES.has(operation.operationType ?? '')) {
-    // LOCATION / EVIDENCE / COMPLETE: o push só aplica INSPECTION_RESPONSE.
-    // Permanecem na outbox para endpoints dedicados / PBIs seguintes.
+    // LOCATION: o push só aplica INSPECTION_RESPONSE; a localização segue na conclusão.
     return { kind: 'skipped' };
   }
 

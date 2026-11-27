@@ -1,3 +1,4 @@
+import { isNetworkUnavailableError } from '@/infrastructure/api/errorResponse';
 import type { ConflictServerSnapshot, PendingOperation, SyncOperationStatus } from './draftStore';
 
 export type BatchSyncResult = {
@@ -110,7 +111,8 @@ export async function processPendingOperations(
       result.failed += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível enviar a operação.';
-      await storage.updateSyncOperation(operation.id, 'FAILED', message);
+      // Sem rede não é falha da operação: continua PENDING e sai no próximo sync, sem exigir "Tentar novamente".
+      await storage.updateSyncOperation(operation.id, isNetworkUnavailableError(error) ? 'PENDING' : 'FAILED', message);
       blockedInspections.add(operation.inspectionId);
       result.failed += 1;
     }

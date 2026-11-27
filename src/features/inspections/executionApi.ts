@@ -206,13 +206,15 @@ export async function completeAssignedInspection(
   answers: { itemId: string; valueText?: string; conformity?: string; observation?: string }[],
   location?: { latitude: number; longitude: number },
   signature?: { contentType: 'image/png'; dataBase64: string },
+  /** Instante real da conclusão no aparelho (relevante quando o envio é adiado pela outbox). */
+  completedAtDevice: string = new Date().toISOString(),
 ): Promise<void> {
   await apiRequest(`/inspections/my/${id}/complete`, {
     method: 'POST',
     session: await session(),
     body: {
       version,
-      completedAtDevice: new Date().toISOString(),
+      completedAtDevice,
       latitude: location?.latitude,
       longitude: location?.longitude,
       answers,
