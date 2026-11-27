@@ -13,7 +13,12 @@
     },
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
     },
     "android": {
       "package": "com.projectfieldcore.fieldops",
@@ -42,6 +47,12 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Permita que o FieldOps registre sua localização ao iniciar a inspeção."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Permita que o FieldOps use o Face ID para desbloquear o aplicativo neste aparelho."
         }
       ],
       "expo-notifications",
