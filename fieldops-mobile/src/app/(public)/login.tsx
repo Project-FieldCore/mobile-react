@@ -16,6 +16,8 @@ import {
 } from '@/design-system';
 import { ApiError } from '@/infrastructure/api/client';
 import { useAuthStore } from '@/features/auth/store';
+import { useThemeColors } from '@/features/theme/ThemeProvider';
+import { ThemeSelector } from '@/features/theme/ThemeSelector';
 
 const loginSchema = z.object({
   email: z.string().trim().email('Informe um e-mail válido.'),
@@ -25,6 +27,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
+  const themeColors = useThemeColors();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const signIn = useAuthStore((state) => state.signIn);
   const {
@@ -68,7 +71,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <LinearGradient
         colors={gradients.brand}
@@ -79,12 +85,16 @@ export default function LoginScreen() {
         <BrandLogo width={230} />
       </LinearGradient>
 
-        <View style={styles.card}>
-          <Text style={styles.greeting}>Olá!</Text>
-          <Text style={styles.subtitle}>Entre com suas credenciais para continuar</Text>
+        <View style={[styles.card, { backgroundColor: themeColors.background }]}>
+          <Text style={[styles.greeting, { color: themeColors.text }]}>Olá!</Text>
+          <Text style={[styles.subtitle, { color: themeColors.textMuted }]}>Entre com suas credenciais para continuar</Text>
+          <View style={styles.themeSection}>
+            <Text style={[styles.themeLabel, { color: themeColors.textMuted }]}>Aparência</Text>
+            <ThemeSelector />
+          </View>
 
           {errorMessage ? (
-            <View style={styles.errorBanner}>
+            <View style={[styles.errorBanner, { backgroundColor: themeColors.surfaceMuted }]}>
               <Text style={styles.errorBannerText}>{errorMessage}</Text>
             </View>
           ) : null}
@@ -124,14 +134,17 @@ export default function LoginScreen() {
               )}
             />
 
-            <Text style={styles.forgotPasswordLink} onPress={() => router.push('/forgot-password')}>
+            <Text
+              style={[styles.forgotPasswordLink, { color: themeColors.primary }]}
+              onPress={() => router.push('/forgot-password')}
+            >
               Esqueceu a senha?
             </Text>
 
             <Button label="Entrar" onPress={handleSubmit(onSubmit)} loading={isSubmitting} />
           </View>
 
-          <Text style={styles.backLink} onPress={() => router.back()}>
+          <Text style={[styles.backLink, { color: themeColors.textMuted }]} onPress={() => router.back()}>
             Voltar
           </Text>
         </View>
@@ -171,6 +184,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
     marginBottom: spacing.xl,
+  },
+  themeSection: {
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  themeLabel: {
+    ...typography.caption,
+    fontWeight: '700',
   },
   errorBanner: {
     backgroundColor: '#FDECEC',

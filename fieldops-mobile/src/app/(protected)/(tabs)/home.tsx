@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, colors, gradients, radius, shadows, spacing, typography } from '@/design-system';
 import { useAuthStore } from '@/features/auth/store';
 import { useAppTheme } from '@/features/theme/ThemeProvider';
+import { ThemeSelector } from '@/features/theme/ThemeSelector';
 import { disableAssignmentPush, enableAssignmentPush, isPushOptedIn, syncAssignmentPushRegistration } from '@/features/push/pushRegistration';
 import { getPendingOperations } from '@/features/inspections/draftStore';
 import {
@@ -227,6 +228,17 @@ export default function HomeScreen() {
           {pushMessage ? <Text style={[styles.pushMessage, { color: muted }]}>{pushMessage}</Text> : null}
         </Card>
 
+        <Card style={styles.themeCard}>
+          <View style={styles.pushHeader}>
+            <Ionicons name="contrast-outline" size={22} color={icon} />
+            <View style={styles.pushText}>
+              <Text style={[styles.pushTitle, { color: text }]}>Aparência</Text>
+              <Text style={[styles.pushDescription, { color: muted }]}>Escolha o tema claro, escuro ou acompanhe o aparelho.</Text>
+            </View>
+          </View>
+          <ThemeSelector />
+        </Card>
+
         <Text style={[styles.sectionTitle, { color: text }]}>Próximas inspeções</Text>
         <View style={styles.list}>
           {UPCOMING.map((inspection) => (
@@ -331,6 +343,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   pushCard: { gap: spacing.sm },
+  themeCard: { gap: spacing.md },
   pushHeader: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   pushText: { flex: 1, gap: 2 },
   pushTitle: { ...typography.subtitle, color: colors.text },
