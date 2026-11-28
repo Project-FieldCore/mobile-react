@@ -1,3 +1,5 @@
+import { isNetworkUnavailableError } from '@/infrastructure/api/errorResponse';
+import { describeSyncError } from './syncErrorMessage';
 import type { ConflictServerSnapshot, PendingOperation, SyncOperationStatus } from './draftStore';
 
 export type BatchSyncResult = {
@@ -38,25 +40,34 @@ export type SendOutcome =
 
 export type OperationSender = (operation: PendingOperation) => Promise<void | SendOutcome>;
 
+/** Ordem dentro de uma inspeção: START → ANSWERS → LOCATION → EVIDENCE → COMPLETE. */
 const operationOrder: Record<string, number> = {
+  START: 0,
   ANSWERS: 1,
   LOCATION: 2,
   EVIDENCE: 3,
   COMPLETE: 4,
 };
 
-function compareOperations(left: PendingOperation, right: PendingOperation): number {
-  if (left.inspectionId === right.inspectionId) {
-    const order = (operationOrder[left.operationType ?? ''] ?? 0) - (operationOrder[right.operationType ?? ''] ?? 0);
-    if (order !== 0) return order;
-  }
-  return left.createdAt.localeCompare(right.createdAt);
-}
-
+/**
+ * Agrupa por inspeção (grupos na ordem da operação mais antiga de cada uma) e,
+ * dentro do grupo, aplica a ordem de dependência do servidor.
+ */
 export function orderPendingOperations(operations: PendingOperation[]): PendingOperation[] {
-  return operations
-    .filter((operation) => operation.status === 'PENDING')
-    .sort(compareOperations);
+  const pending = operations.filter((operation) => operation.status === 'PENDING');
+  const firstSeen = new Map<string, string>();
+  for (const operation of pending) {
+    const current = firstSeen.get(operation.inspectionId);
+    if (current === undefined || operation.createdAt < current) firstSeen.set(operation.inspectionId, operation.createdAt);
+  }
+  return pending.sort((left, right) => {
+    if (left.inspectionId !== right.inspectionId) {
+      const byGroup = (firstSeen.get(left.inspectionId) ?? '').localeCompare(firstSeen.get(right.inspectionId) ?? '');
+      return byGroup !== 0 ? byGroup : left.inspectionId.localeCompare(right.inspectionId);
+    }
+    const order = (operationOrder[left.operationType ?? ''] ?? 0) - (operationOrder[right.operationType ?? ''] ?? 0);
+    return order !== 0 ? order : left.createdAt.localeCompare(right.createdAt);
+  });
 }
 
 function normalizeOutcome(result: void | SendOutcome): SendOutcome {
@@ -65,7 +76,9 @@ function normalizeOutcome(result: void | SendOutcome): SendOutcome {
 
 /**
  * Envia a fila preservando a ordem de cada inspeção. Se uma operação falha,
- * as próximas da mesma inspeção ficam pendentes e as demais inspeções seguem.
+ * as próximas da mesma inspeção ficam pendentes e as demais inspeções seguem
+ * (conflito/falha de uma inspeção nunca bloqueia outra). Sem rede, interrompe o
+ * lote: o restante continua PENDING, sem esperar um timeout por operação.
  */
 export async function processPendingOperations(
   storage: BatchSyncStorage,
@@ -75,8 +88,10 @@ export async function processPendingOperations(
   const blockedInspections = new Set<string>();
   const result: BatchSyncResult = { sent: 0, failed: 0, blocked: 0, conflicts: 0, skipped: 0 };
 
+  let offline = false;
+
   for (const operation of operations) {
-    if (blockedInspections.has(operation.inspectionId)) {
+    if (offline || blockedInspections.has(operation.inspectionId)) {
       result.blocked += 1;
       continue;
     }
@@ -109,8 +124,11 @@ export async function processPendingOperations(
       blockedInspections.add(operation.inspectionId);
       result.failed += 1;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível enviar a operação.';
-      await storage.updateSyncOperation(operation.id, 'FAILED', message);
+      const message = describeSyncError(error, 'Não foi possível enviar a operação.');
+      // Sem rede não é falha da operação: continua PENDING e sai no próximo sync, sem exigir "Tentar novamente".
+      const networkDown = isNetworkUnavailableError(error);
+      await storage.updateSyncOperation(operation.id, networkDown ? 'PENDING' : 'FAILED', message);
+      if (networkDown) offline = true;
       blockedInspections.add(operation.inspectionId);
       result.failed += 1;
     }

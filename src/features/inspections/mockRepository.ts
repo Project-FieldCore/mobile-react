@@ -3,8 +3,21 @@
  * NÃO são mocks de cadastro OpenAPI — ver `infrastructure/api/contractMocks.ts`.
  */
 import { captureDeviceLocation } from './deviceLocation';
-import { enqueueInspectionForSync, getInspectionDraft, removeDeliveredInspectionOperations, saveInspectionLocation } from './draftStore';
+import {
+  enqueueInspectionCompletion,
+  enqueueInspectionStart,
+  enqueueInspectionForSync,
+  getInspectionDraft,
+  getPendingOperations,
+  hydrateInspectionDraft,
+  removeDeliveredInspectionOperations,
+  saveInspectionLocation,
+} from './draftStore';
 import { completeAssignedInspection, fetchAssignedInspections, fetchChecklist, fetchInspection, startAssignedInspection, usesExecutionApi } from './executionApi';
+import { applyPendingCompletionStatus } from './completionOutbox';
+import { mergeServerWithLocal, needsServerDetail, refreshInspectionsFromServer, type RefreshDeps } from './inspectionRefresh';
+import { startInspectionOfflineFirst, type StartFlowDeps } from './startFlow';
+import { completeInspectionOfflineFirst, type CompleteFlowDeps } from './completionFlow';
 import { ApiError } from '@/infrastructure/api/client';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
@@ -197,15 +210,43 @@ async function mergeCachedWithDownloaded(): Promise<Inspection[]> {
   return [...byId.values()];
 }
 
+/** Conclusões ainda na outbox mantêm a inspeção como "Aguardando sincronização". */
+async function withPendingCompletion(items: Inspection[]): Promise<Inspection[]> {
+  try {
+    return applyPendingCompletionStatus(items, await getPendingOperations());
+  } catch {
+    return items;
+  }
+}
+
+function refreshDeps(): RefreshDeps {
+  return { fetchInspection, saveInspection: saveDownloadedInspection };
+}
+
+/** Atualiza a cópia local das inspeções concluídas/decididas (usado após o pull). */
+export async function refreshSettledInspections(): Promise<number> {
+  if (!usesExecutionApi()) return 0;
+  const cached = await readDownloadedInspections();
+  const pending = new Set((await getPendingOperations().catch(() => [])).map((operation) => operation.inspectionId));
+  const targets = cached.filter((inspection) => needsServerDetail(inspection) && !pending.has(inspection.id));
+  await refreshInspectionsFromServer(targets, refreshDeps(), pending);
+  return targets.length;
+}
+
 export async function listInspections(): Promise<Inspection[]> {
   if (usesExecutionApi()) {
     try {
-      const downloaded = await fetchAssignedInspections();
-      await Promise.all(downloaded.map((inspection) => saveDownloadedInspection(inspection)));
-      return downloaded;
+      const assigned = await fetchAssignedInspections();
+      await Promise.all(assigned.map((inspection) => saveDownloadedInspection(inspection)));
+      const operations = await getPendingOperations().catch(() => []);
+      // /inspections/my não lista SUBMITTED/APPROVED: mantém as cópias locais (pull/conclusão).
+      const merged = mergeServerWithLocal(assigned, await readDownloadedInspections(), operations);
+      const pendingIds = new Set(operations.map((operation) => operation.inspectionId));
+      const refreshed = await refreshInspectionsFromServer(merged, refreshDeps(), pendingIds);
+      return withPendingCompletion(refreshed);
     } catch (error) {
       const cached = await readDownloadedInspections();
-      if (cached.length) return cached;
+      if (cached.length) return withPendingCompletion(cached);
       throw error;
     }
   }
@@ -218,10 +259,10 @@ export async function getInspection(id: string): Promise<Inspection | null> {
     try {
       const inspection = await fetchInspection(id);
       if (inspection) await saveDownloadedInspection(inspection);
-      return inspection;
+      return inspection ? (await withPendingCompletion([inspection]))[0] ?? inspection : inspection;
     } catch (error) {
       const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null;
-      if (cached) return cached;
+      if (cached) return (await withPendingCompletion([cached]))[0] ?? cached;
       if (error instanceof ApiError && error.status === 404) return null;
       throw error;
     }
@@ -253,13 +294,8 @@ export async function startInspection(id: string): Promise<void> {
   const location = await captureDeviceLocation();
   if (location) await saveInspectionLocation(id, location);
   if (usesExecutionApi()) {
-    try {
-      const current = await fetchInspection(id);
-      if (current && current.status !== 'IN_PROGRESS') await startAssignedInspection(id, startedAt, location);
-    } catch {
-      const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id);
-      if (!cached) throw new Error('Não foi possível abrir a inspeção sem uma cópia baixada.');
-    }
+    // Offline-first: sem rede, o START vai para a outbox e o sync o aplica antes de respostas/conclusão.
+    await startInspectionOfflineFirst(id, startedAt, location, startFlowDeps());
     return;
   }
   const inspection = inspections.find((item) => item.id === id);
@@ -269,27 +305,43 @@ export async function startInspection(id: string): Promise<void> {
   await persistInspection(inspection);
 }
 
-export async function completeInspection(id: string, signature?: { contentType: 'image/png'; dataBase64: string }): Promise<{ coordinatesSent: boolean }> {
+/** Atualiza só o status da cópia local baixada (sem tocar no servidor). */
+export async function markDownloadedInspectionStatus(id: string, status: InspectionStatus): Promise<void> {
+  const cached = (await readDownloadedInspections()).find((inspection) => inspection.id === id);
+  if (cached) await saveDownloadedInspection({ ...cached, status });
+}
+
+function startFlowDeps(): StartFlowDeps {
+  return {
+    getCachedInspection: async (id) => (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null,
+    startRemote: startAssignedInspection,
+    enqueueStart: enqueueInspectionStart,
+    saveInspection: saveDownloadedInspection,
+  };
+}
+
+function completionDeps(): CompleteFlowDeps {
+  return {
+    getCachedInspection: async (id) => (await readDownloadedInspections()).find((inspection) => inspection.id === id) ?? null,
+    getCachedChecklist: readDownloadedChecklist,
+    fetchChecklist,
+    fetchInspection,
+    getDraft: async (id) => getInspectionDraft(id) ?? hydrateInspectionDraft(id),
+    captureLocation: captureDeviceLocation,
+    saveLocation: saveInspectionLocation,
+    completeRemote: completeAssignedInspection,
+    enqueueCompletion: enqueueInspectionCompletion,
+    markPendingSync: (id) => markDownloadedInspectionStatus(id, 'PENDING_SYNC'),
+    markSubmitted: (id) => markDownloadedInspectionStatus(id, 'SUBMITTED'),
+    removeDeliveredOperations: removeDeliveredInspectionOperations,
+    now: () => new Date().toISOString(),
+  };
+}
+
+export async function completeInspection(id: string, signature?: { contentType: 'image/png'; dataBase64: string }): Promise<{ coordinatesSent: boolean; queued?: boolean }> {
   if (usesExecutionApi()) {
-    const current = await fetchInspection(id);
-    const draft = getInspectionDraft(id);
-    const checklist = await fetchChecklist(id);
-    const answers = checklist.flatMap((section) => section.items).map((item) => ({
-      itemId: item.id,
-      valueText: draft?.answers[item.id],
-      conformity: draft?.answers[item.id] === 'Não conforme' ? 'NON_CONFORMING' : draft?.answers[item.id] === 'Conforme' ? 'CONFORMING' : draft?.answers[item.id] === 'Não aplicável' ? 'NOT_APPLICABLE' : undefined,
-      observation: draft?.nonConformityDescription,
-    }));
-    for (const item of checklist.flatMap((section) => section.items)) {
-      if (item.observationRequired && draft?.answers[item.id] === 'Não conforme' && !draft.nonConformityDescription?.trim()) {
-        throw new Error(`${item.label} exige uma observação.`);
-      }
-    }
-    const location = await captureDeviceLocation();
-    if (location) await saveInspectionLocation(id, location);
-    await completeAssignedInspection(id, current?.version ?? 0, answers, location, signature);
-    await removeDeliveredInspectionOperations(id);
-    return { coordinatesSent: Boolean(location) };
+    // Offline-first: conclui online se possível; sem rede, salva na outbox (COMPLETE) e marca PENDING_SYNC.
+    return completeInspectionOfflineFirst(id, signature, completionDeps());
   }
   const inspection = inspections.find((item) => item.id === id);
   const location = await captureDeviceLocation();

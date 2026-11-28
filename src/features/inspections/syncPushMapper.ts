@@ -7,6 +7,7 @@ import type {
 } from './syncPushApi';
 import type { SendOutcome } from './batchSync';
 import { createUuid, isUuid } from './uuid';
+import { DEPENDENCY_FAILED_MESSAGE, REJECTED_MESSAGE_PREFIX } from './syncErrorMessage';
 
 export type AnswerSyncPayload = {
   entityId: string;
@@ -96,9 +97,9 @@ export function receiptMessage(status: MobileSyncStatus, entityVersion?: number 
         ? 'A versão local diverge da versão no servidor.'
         : `Conflito com a versão ${entityVersion} no servidor. A alteração local foi preservada.`;
     case 'REJECTED':
-      return 'O servidor rejeitou a operação.';
+      return `${REJECTED_MESSAGE_PREFIX}.`;
     case 'DEPENDENCY_FAILED':
-      return 'A operação ficou bloqueada por falha em uma dependência.';
+      return DEPENDENCY_FAILED_MESSAGE;
     default:
       return 'Não foi possível confirmar a operação.';
   }

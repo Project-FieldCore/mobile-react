@@ -1,6 +1,13 @@
 import { API_TIMEOUT_MS, getApiBaseUrl } from '@/config/api';
 import type { Session } from '@/infrastructure/storage/session';
-import { formatErrorMessage, parseErrorResponse, type ErrorResponse, type FieldError } from './errorResponse';
+import {
+  formatErrorMessage,
+  NETWORK_TIMEOUT_CODE,
+  NETWORK_UNAVAILABLE_CODE,
+  parseErrorResponse,
+  type ErrorResponse,
+  type FieldError,
+} from './errorResponse';
 import { toUploadPart } from './uploadPart';
 
 export class ApiError extends Error {
@@ -110,10 +117,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError('A conexão com o servidor excedeu 15 segundos. Tente novamente.');
+      throw new ApiError('A conexão com o servidor excedeu 15 segundos. Tente novamente.', undefined, NETWORK_TIMEOUT_CODE);
     }
 
-    throw new ApiError('Não foi possível conectar ao servidor. Verifique a URL da API e a rede.');
+    throw new ApiError('Não foi possível conectar ao servidor. Verifique a URL da API e a rede.', undefined, NETWORK_UNAVAILABLE_CODE);
   } finally {
     clearTimeout(timeout);
   }
@@ -161,9 +168,9 @@ export async function apiUpload<T>(path: string, file: UploadFile, session?: Ses
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError('A conexão com o servidor excedeu 15 segundos. Tente novamente.');
+      throw new ApiError('A conexão com o servidor excedeu 15 segundos. Tente novamente.', undefined, NETWORK_TIMEOUT_CODE);
     }
-    throw new ApiError('Não foi possível conectar ao servidor. Verifique a URL da API e a rede.');
+    throw new ApiError('Não foi possível conectar ao servidor. Verifique a URL da API e a rede.', undefined, NETWORK_UNAVAILABLE_CODE);
   } finally {
     clearTimeout(timeout);
   }

@@ -6,7 +6,11 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, colors, EmptyState, ErrorState, LoadingState, spacing, typography } from '@/design-system';
 import {
+  approvalComment,
+  canExecuteInspection,
   formatReviewedAt,
+  inspectionHeadline,
+  isApprovedInspection,
   inspectionStatusLabel,
   isRejectedInspection,
   rejectionMotivoText,
@@ -77,13 +81,16 @@ export default function InspectionDetailScreen() {
   if (!inspection) return <EmptyState title="Inspeção não encontrada" description="Volte à lista e selecione outra inspeção." />;
 
   const rejected = isRejectedInspection(inspection);
+  const approved = isApprovedInspection(inspection);
+  const executable = canExecuteInspection(inspection.status);
+  const comment = approvalComment(inspection.review);
   const reviewedAtLabel = formatReviewedAt(inspection.review?.reviewedAt);
   const reviewerLabel = reviewerCaption(inspection.review);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <LinearGradient colors={[colors.navy, colors.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
-        <Text style={styles.eyebrow}>{rejected ? 'INSPEÇÃO REPROVADA' : 'INSPEÇÃO ATRIBUÍDA'}</Text>
+        <Text style={styles.eyebrow}>{inspectionHeadline(inspection.status)}</Text>
         <Text style={styles.title}>{inspection.equipment}</Text>
         <Text style={styles.client}>{inspection.client}</Text>
       </LinearGradient>
@@ -103,9 +110,22 @@ export default function InspectionDetailScreen() {
           {reviewedAtLabel ? <Text style={styles.rejectMeta}>{reviewedAtLabel}</Text> : null}
         </Card>
       ) : null}
+      {approved ? (
+        <Card style={styles.approveCard} accessibilityRole="summary">
+          <Text style={styles.approveTitle}>Inspeção aprovada</Text>
+          {comment ? (
+            <>
+              <Text style={styles.approveLabel}>Comentário do revisor</Text>
+              <Text style={styles.approveText}>{comment}</Text>
+            </>
+          ) : null}
+          {reviewerLabel ? <Text style={styles.approveMeta}>{reviewerLabel}</Text> : null}
+          {reviewedAtLabel ? <Text style={styles.approveMeta}>{reviewedAtLabel}</Text> : null}
+        </Card>
+      ) : null}
       <Text style={styles.sectionTitle}>Instruções</Text>
       <Text style={styles.instructions}>{inspection.instructions}</Text>
-      {!rejected ? (
+      {executable ? (
         <>
           <Card style={styles.checkInCard}>
             <Text style={styles.checkInTitle}>Check-in no local</Text>
@@ -169,6 +189,17 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: colors.danger,
   },
+  approveCard: {
+    gap: spacing.sm,
+    borderColor: '#BBF7D0',
+    backgroundColor: '#F0FDF4',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.success,
+  },
+  approveTitle: { ...typography.subtitle, color: colors.success },
+  approveLabel: { ...typography.caption, color: colors.success, textTransform: 'uppercase', letterSpacing: 0.6 },
+  approveText: { ...typography.body, color: colors.text },
+  approveMeta: { ...typography.caption, color: colors.textMuted },
   rejectTitle: { ...typography.subtitle, color: colors.danger },
   rejectLabel: {
     ...typography.caption,

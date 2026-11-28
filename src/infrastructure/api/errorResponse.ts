@@ -54,3 +54,17 @@ export function formatErrorMessage(error: ErrorResponse, fallback: string): stri
   }
   return error.message || error.code || fallback;
 }
+
+/** Códigos locais (não vêm da API) para falhas de rede/timeout do cliente HTTP. */
+export const NETWORK_UNAVAILABLE_CODE = 'NETWORK_UNAVAILABLE';
+export const NETWORK_TIMEOUT_CODE = 'NETWORK_TIMEOUT';
+
+/**
+ * `true` quando a requisição nem chegou ao servidor (sem rede, DNS, recusa de
+ * conexão ou timeout). Respostas HTTP 4xx/5xx NÃO são indisponibilidade.
+ */
+export function isNetworkUnavailableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const { status, code } = error as Error & { status?: number; code?: string };
+  return status == null && (code === NETWORK_UNAVAILABLE_CODE || code === NETWORK_TIMEOUT_CODE);
+}

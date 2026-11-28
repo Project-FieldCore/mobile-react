@@ -5,7 +5,7 @@ import { useRef, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Button, colors, spacing, typography } from '@/design-system';
-import { addInspectionEvidence, setEvidenceUploadStatus } from '@/features/inspections/draftStore';
+import { addInspectionEvidence, removeEvidenceOperations, setEvidenceUploadStatus } from '@/features/inspections/draftStore';
 import { uploadItemEvidence, usesExecutionApi } from '@/features/inspections/executionApi';
 
 export default function EvidenceScreen() {
@@ -45,6 +45,7 @@ export default function EvidenceScreen() {
       try {
         await uploadItemEvidence(id, itemId, destination);
         await setEvidenceUploadStatus(id, destination, 'UPLOADED');
+        await removeEvidenceOperations(id, destination);
       } catch (error) {
         await setEvidenceUploadStatus(id, destination, 'PENDING');
         setUploadError(error instanceof Error

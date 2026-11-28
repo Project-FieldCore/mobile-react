@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 import { canRetry } from './syncQueue';
 import { mapAnswerValue } from './syncPushMapper';
 import { createUuid, isUuid } from './uuid';
+import { parseCompletionPayload, type CompletionPayload } from './completionOutbox';
+import { parseStartPayload, type StartPayload } from './startOutbox';
 
 export type InspectionDraft = {
   answers: Record<string, string>;
@@ -225,6 +227,65 @@ async function removePersistedInspectionDraft(id: string) {
 
 export async function enqueueInspectionForSync(inspectionId: string) {
   await enqueueChange(inspectionId, 'COMPLETE', { inspectionId });
+}
+
+/**
+ * Enfileira a conclusão offline (COMPLETE). Idempotente por inspeção: se já há
+ * uma conclusão pendente, atualiza o payload e mantém o MESMO operationId
+ * (toque duplo / nova tentativa nunca cria duas conclusões).
+ */
+export async function enqueueInspectionCompletion(
+  inspectionId: string,
+  payload: Omit<CompletionPayload, 'operationId'>,
+): Promise<string> {
+  const existing = (await getPendingOperations()).find((operation) => (
+    operation.inspectionId === inspectionId
+    && operation.operationType === 'COMPLETE'
+    && parseCompletionPayload(operation.payload) !== null
+  ));
+  if (existing) {
+    await replaceSyncOperationPayload(existing.id, { ...payload, operationId: existing.id });
+    if (existing.status !== 'PENDING') await updateSyncOperation(existing.id, 'PENDING', undefined, false);
+    return existing.id;
+  }
+  const operationId = createUuid();
+  await enqueueRawSyncOperation({
+    id: operationId,
+    inspectionId,
+    createdAt: new Date().toISOString(),
+    status: 'PENDING',
+    attempts: 0,
+    operationType: 'COMPLETE',
+    payload: JSON.stringify({ ...payload, operationId }),
+  });
+  return operationId;
+}
+
+/** Enfileira o início da inspeção (uma operação START por inspeção, operationId estável). */
+export async function enqueueInspectionStart(
+  inspectionId: string,
+  payload: Omit<StartPayload, 'operationId'>,
+): Promise<string> {
+  const existing = (await getPendingOperations()).find((operation) => (
+    operation.inspectionId === inspectionId
+    && operation.operationType === 'START'
+    && parseStartPayload(operation.payload) !== null
+  ));
+  if (existing) {
+    if (existing.status !== 'PENDING') await updateSyncOperation(existing.id, 'PENDING', undefined, false);
+    return existing.id;
+  }
+  const operationId = createUuid();
+  await enqueueRawSyncOperation({
+    id: operationId,
+    inspectionId,
+    createdAt: new Date().toISOString(),
+    status: 'PENDING',
+    attempts: 0,
+    operationType: 'START',
+    payload: JSON.stringify({ ...payload, operationId }),
+  });
+  return operationId;
 }
 
 /** Uma linha de outbox por item — alinhado a INSPECTION_RESPONSE no sync push. */
@@ -510,6 +571,23 @@ export async function removeDeliveredInspectionOperations(inspectionId: string):
   await Promise.all(
     operations
       .filter((operation) => operation.inspectionId === inspectionId && deliveredTypes.has(operation.operationType ?? ''))
+      .map((operation) => removeSyncOperation(operation.id)),
+  );
+}
+
+/** Foto já enviada ao servidor: a operação EVIDENCE correspondente sai da outbox (evita reenvio duplicado). */
+export async function removeEvidenceOperations(inspectionId: string, uri: string): Promise<void> {
+  const operations = await getPendingOperations();
+  await Promise.all(
+    operations
+      .filter((operation) => {
+        if (operation.inspectionId !== inspectionId || operation.operationType !== 'EVIDENCE') return false;
+        try {
+          return (JSON.parse(operation.payload ?? '{}') as { uri?: string }).uri === uri;
+        } catch {
+          return false;
+        }
+      })
       .map((operation) => removeSyncOperation(operation.id)),
   );
 }

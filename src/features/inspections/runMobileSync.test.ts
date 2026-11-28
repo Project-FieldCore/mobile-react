@@ -6,6 +6,7 @@ import { setLastSyncAt } from './syncCursorStore';
 import { runMobileSync } from './runMobileSync';
 
 vi.mock('./runOutboxSync', () => ({ runOutboxSync: vi.fn() }));
+vi.mock('./mockRepository', () => ({ refreshSettledInspections: vi.fn().mockResolvedValue(0) }));
 vi.mock('./runSyncPull', () => ({ runSyncPull: vi.fn() }));
 vi.mock('./syncCursorStore', () => ({ setLastSyncAt: vi.fn().mockResolvedValue(undefined) }));
 

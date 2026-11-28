@@ -8,7 +8,7 @@ import {
   saveDownloadedInspection,
 } from './mockRepository';
 import { applyPullChanges } from './syncPullApply';
-import type { MobileSyncChange } from './syncPullApi';
+import type { MobileSyncChange, MobileSyncInspectionPayload } from './syncPullApi';
 
 vi.mock('./draftStore', () => ({
   clearInspectionDraft: vi.fn(),
@@ -129,6 +129,52 @@ describe('applyPullChanges', () => {
         motivo: 'Evidência ausente',
         reviewerName: 'Ana Silva',
       }),
+    }));
+  });
+
+  it('pull incremental APPROVED (sem items, só itemsCount) atualiza a cópia local e mantém o checklist', async () => {
+    mockedRead.mockResolvedValue([{
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', client: 'ACME', site: 'Planta 1', equipment: 'Transformador TR-01',
+      scheduledAt: 'x', priority: 'HIGH', status: 'SUBMITTED', instructions: 'Seguir NR-10', version: 6,
+    }]);
+    const incremental = inspectionUpsert();
+    const { items: _items, ...withoutItems } = incremental.payload as MobileSyncInspectionPayload;
+    incremental.payload = {
+      ...withoutItems,
+      status: 'APPROVED',
+      version: 7,
+      itemsCount: 2,
+      review: {
+        decision: 'APPROVED',
+        motivo: 'Evidência verificada. Aprovado.',
+        reviewerId: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr',
+        reviewerName: 'Admin Demo',
+        reviewedAt: '2026-11-27T00:09:35.519Z',
+      },
+    } as MobileSyncInspectionPayload;
+
+    const result = await applyPullChanges([incremental]);
+
+    expect(result.upsertedInspections).toBe(1);
+    expect(mockedSaveInspection).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'APPROVED',
+      version: 7,
+      client: 'ACME',
+      site: 'Planta 1',
+      review: expect.objectContaining({ decision: 'APPROVED', motivo: 'Evidência verificada. Aprovado.', reviewerName: 'Admin Demo' }),
+    }));
+    expect(mockedSaveChecklist).not.toHaveBeenCalled();
+  });
+
+  it('pull incremental cria a inspeção ausente (sem items) com o título do payload', async () => {
+    const incremental = inspectionUpsert();
+    const { items: _items, ...withoutItems } = incremental.payload as MobileSyncInspectionPayload;
+    incremental.payload = { ...withoutItems, status: 'APPROVED', itemsCount: 2 } as MobileSyncInspectionPayload;
+
+    await applyPullChanges([incremental]);
+
+    expect(mockedSaveInspection).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status: 'APPROVED', equipment: 'Transformador TR-01',
     }));
   });
 
